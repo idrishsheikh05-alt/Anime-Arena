@@ -3,7 +3,6 @@ import logging
 import sys
 import os
 from aiohttp import web
-from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -16,7 +15,24 @@ from handlers import general, quiz, imposter, mafia
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
+# 1. Bot aur Dispatcher ko pehle initialize karein
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+)
+dp = Dispatcher(storage=MemoryStorage())
 
+# Middleware aur Routers register karein
+dp.message.middleware(AccessControlMiddleware())
+dp.callback_query.middleware(AccessControlMiddleware())
+
+dp.include_router(general.router)
+dp.include_router(quiz.router)
+dp.include_router(imposter.router)
+dp.include_router(mafia.router)
+
+
+# 2. Render Health Check Server
 async def health_check(_request):
     return web.Response(text="Anime Arena Bot is Online!", status=200)
 
@@ -27,45 +43,19 @@ async def start_web_server():
     app.router.add_get("/health", health_check)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logging.info(f"Render Web Service health endpoint listening on port {PORT}")
-
-
-# 1. Simple web server handler for Render health check
-async def handle(request):
-    return web.Response(text="Bot is running!")
-
-app = web.Application()
-app.router.add_get("/", handle)
-
-async def bld_web_app():
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.getenv("PORT", 10000))
+    
+    # Render ke dynamic PORT ya config se port uthayega
+    port = int(os.getenv("PORT", PORT))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    
+    logging.info(f"Render Web Service health endpoint listening on port {port}")
+
+
+# 3. Main function
 async def main():
     await init_db()
     await start_web_server()
-    await bld_web_app()
-    await dp.start_polling(bot)
-
-    bot = Bot(
-        token=BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
-    )
-    dp = Dispatcher(storage=MemoryStorage())
-
-    dp.message.middleware(AccessControlMiddleware())
-    dp.callback_query.middleware(AccessControlMiddleware())
-
-    dp.include_router(general.router)
-    dp.include_router(quiz.router)
-    dp.include_router(imposter.router)
-    dp.include_router(mafia.router)
-
+    
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("⚔️ Anime Arena Multi-Game Engine is LIVE!")
     await dp.start_polling(bot)
@@ -73,4 +63,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
   
