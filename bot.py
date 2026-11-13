@@ -49,6 +49,8 @@ async bld_web_app():
 async def main():
     await init_db()
     await start_web_server()
+    await bld_web_app()
+    await dp.start_polling(bot)
 
     bot = Bot(
         token=BOT_TOKEN,
