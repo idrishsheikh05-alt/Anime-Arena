@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import sys
+import os
+from aiohttp import web
 from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -30,6 +32,20 @@ async def start_web_server():
     logging.info(f"Render Web Service health endpoint listening on port {PORT}")
 
 
+# 1. Simple web server handler for Render health check
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async bld_web_app():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    
 async def main():
     await init_db()
     await start_web_server()
