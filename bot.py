@@ -39,7 +39,7 @@ async def handle(request):
 app = web.Application()
 app.router.add_get("/", handle)
 
-async bld_web_app():
+async def bld_web_app():
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.getenv("PORT", 10000))
