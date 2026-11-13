@@ -236,8 +236,13 @@ async def cmd_leaderboards(message: Message):
 async def cb_navigation(callback: CallbackQuery):
     target = callback.data.split(":", 1)[1]
     if target == "profile":
-        await ensure_user(callback.from_user.id, callback.from_user.username, callback.from_user.full_name)
-        await callback.message.answer(await render_profile(callback.from_user.id))
+            await ensure_user(callback.from_user.id, callback.from_user.full_name
+        photo, caption = await render_profile(callback.from_user.id, callback.bot)
+if isinstance(photo, str):
+    await callback.message.answer(photo)
+else:
+    await callback.message.answer_photo(photo=photo, caption=caption)
+    
     elif target == "daily":
         async with async_session() as session:
             user = await session.get(User, callback.from_user.id)
