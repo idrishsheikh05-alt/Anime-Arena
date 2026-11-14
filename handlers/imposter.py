@@ -230,7 +230,7 @@ async def cmd_list_animes(message: Message):
     text = (
         f"📚 **AVAILABLE ANIME CATEGORIES & DATABASE**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Total Characters: **500+ Main & Supportive Characters** across big franchises[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)!\n\n"
+        f"Total Characters: **Massive 500+ Character Pool** across franchises!\n\n"
         f"🔥 **Featured Series:**\n" + "".join(f"• `{s}`\n" for s in series_set) +
         f"\n👉 *Usage example:* `/imposter classic naruto`"
     )
@@ -406,10 +406,10 @@ async def run_imposter_phases(message: Message, chat_id: int):
             p_name = lobby["players"][uid]
             await message.answer(
                 f"🎯 **Turn:** [{p_name}](tg://user?id={uid})\n"
-                f"👉 Describe your character now! (You have 15 seconds)",
+                f"👉 Describe your character now! (You have **45 seconds**)",
                 parse_mode="Markdown"
             )
-            await asyncio.sleep(15)
+            await asyncio.sleep(45)
 
         lobby["phase"] = "VOTING"
         kb = InlineKeyboardMarkup(
@@ -419,12 +419,12 @@ async def run_imposter_phases(message: Message, chat_id: int):
             ]
         )
         await message.answer(
-            f"🗳️ **ROUND {lobby['round_num']} — ELIMINATION VOTING (30s)**\n"
+            f"🗳️ **ROUND {lobby['round_num']} — ELIMINATION VOTING (45s)**\n"
             f"Who is describing a different character? Tap below to vote!",
             reply_markup=kb,
             parse_mode="Markdown",
         )
-        await asyncio.sleep(30)
+        await asyncio.sleep(45)
         if chat_id not in IMPOSTER_LOBBIES:
             return
 
@@ -454,13 +454,16 @@ async def run_imposter_phases(message: Message, chat_id: int):
         alive_crew = [u for u in lobby["alive"] if u not in lobby["imposters"]]
 
         if not alive_imps:
-            return await finalize_imposter_match(message, chat_id, crew_won=True)
+            await finalize_imposter_match(message, chat_id, crew_won=True)
+            return
 
         if len(lobby["alive"]) == 2 and len(alive_imps) == 1:
-            return await finalize_imposter_match(message, chat_id, crew_won=False)
+            await finalize_imposter_match(message, chat_id, crew_won=False)
+            return
 
         if len(alive_imps) >= len(alive_crew):
-            return await finalize_imposter_match(message, chat_id, crew_won=False)
+            await finalize_imposter_match(message, chat_id, crew_won=False)
+            return
 
         await asyncio.sleep(3)
 
@@ -524,3 +527,5 @@ async def cb_imposter_vote(callback: CallbackQuery):
         return await callback.answer("That player is already eliminated.", show_alert=True)
     lobby["votes"][voter] = target
     await callback.answer(f"🗳️ Vote cast against {lobby['players'][target]}!")
+    
+
