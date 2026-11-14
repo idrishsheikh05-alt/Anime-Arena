@@ -1,13 +1,10 @@
 import os
 import pytz
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN environment variable is missing!")
+BOT_TOKEN = "7553716587:AAFX2L1OMSWzVa98VUSm3C2nv_xnT_0Tg-U"
 
-_raw_db = os.getenv("DATABASE_URL")
-if not _raw_db:
-    raise ValueError("❌ DATABASE_URL environment variable is missing!")
+# Hardcoded PostgreSQL URL (with asyncpg driver conversion)
+_raw_db = "postgresql://anime_arena_user:keQ6ajb6iI2nb5owcPJ9OOqBAddPmdpy@dpg-dbrkbnon74is73fgn36g-a/anime_arena"
 
 if _raw_db.startswith("postgres://"):
     DATABASE_URL = _raw_db.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -16,11 +13,12 @@ elif _raw_db.startswith("postgresql://"):
 else:
     DATABASE_URL = _raw_db
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+# Hardcoded Redis URL
+REDIS_URL = "redis://red-dbrkh0on74is7394bapg:6379"
+
 PORT = int(os.getenv("PORT", 8080))
 BOT_OWNERS = {123456789}
 IST = pytz.timezone("Asia/Kolkata")
-
 
 LEVEL_TITLES = [
     (5, "🌱 Beginner"),
@@ -32,6 +30,7 @@ LEVEL_TITLES = [
     (100, "👑 Legend"),
     (999999, "🌌 Arena God"),
 ]
+
 
 SHOP_CATALOG = {
     "border_azure": {"name": "💠 Celestial Azure Border", "type": "border", "price": 500},
