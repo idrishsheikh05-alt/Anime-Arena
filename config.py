@@ -1,21 +1,26 @@
 import os
 import pytz
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7553716587:AAFX2L1OMSWzVa98VUSm3C2nv_xnT_0Tg-U")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN environment variable is missing!")
 
-# Render PostgreSQL URLs start with postgres://; SQLAlchemy asyncpg requires postgresql+asyncpg://
-_raw_db = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres@localhost/anime_arena")
+_raw_db = os.getenv("DATABASE_URL")
+if not _raw_db:
+    raise ValueError("❌ DATABASE_URL environment variable is missing!")
+
 if _raw_db.startswith("postgres://"):
     DATABASE_URL = _raw_db.replace("postgres://", "postgresql+asyncpg://", 1)
-elif _raw_db.startswith("postgresql://") and "+asyncpg" not in _raw_db:
+elif _raw_db.startswith("postgresql://"):
     DATABASE_URL = _raw_db.replace("postgresql://", "postgresql+asyncpg://", 1)
 else:
     DATABASE_URL = _raw_db
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 PORT = int(os.getenv("PORT", 8080))
-BOT_OWNERS = {123456789}  # Replace with your Telegram numeric ID
+BOT_OWNERS = {123456789}
 IST = pytz.timezone("Asia/Kolkata")
+
 
 LEVEL_TITLES = [
     (5, "🌱 Beginner"),
