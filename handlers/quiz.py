@@ -715,8 +715,29 @@ QUESTION_BANK = [
     {"cat": "Solo Leveling", "diff": "Hard", "xp": 150, "q": "What is the name of the first shadow soldier Sung Jinwoo obtains?", "opts": ["Igris", "Tank", "Iron", "Kaisel"], "ans": 0},
 
 # Helper: Check if chat is a group or supergroup
-def is_group_chat(message: Message) -> bool:
+        def is_group_chat(message: Message) -> bool:
     return message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
+
+
+def get_quiz_lobby_text(host_name: str, host_id: int, players_dict: dict) -> str:
+    if players_dict:
+        player_list = "\n".join(
+            [f"{idx}. 👤 [{name}](tg://user?id={uid})" for idx, (uid, name) in enumerate(players_dict.items(), 1)]
+        )
+    else:
+        player_list = "• *No players joined yet!*"
+
+    host_mention = f"[{host_name}](tg://user?id={host_id})"
+
+    return (
+        f"🧠 **ANIME QUIZ — MATCH LOBBY**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👑 **Host:** {host_mention}\n"
+        f"⚙️ **Settings:** `10 Questions` • `20s/Question` • `Streak & Speed Bonuses`\n\n"
+        f"👥 **Joined Players ({len(players_dict)}/30):**\n"
+        f"{player_list}\n\n"
+        f"👉 Type `/quizjoin` to enter, `/quizstart` to begin!"
+    )
 
 
 @router.message(Command("quiz"))
@@ -729,9 +750,10 @@ async def cmd_quiz_create(message: Message):
         return await message.reply("⚠️ A quiz lobby or match is already active here! Use `/quizjoin` or `/quizstop`.")
 
     await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
-    
+
     QUIZ_GAMES[chat_id] = {
         "host": message.from_user.id,
+        "host_name": message.from_user.full_name,
         "status": "WAITING",
         "players": {message.from_user.id: message.from_user.full_name},
         "scores": {message.from_user.id: 0},
@@ -741,20 +763,13 @@ async def cmd_quiz_create(message: Message):
         "first_answered": False,
         "questions": random.sample(QUESTION_BANK, k=min(10, len(QUESTION_BANK))),
     }
-    
-    host_mention = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
-    players_list = f"1. {host_mention}"
 
-    await message.answer(
-        "🧠 **ANIME QUIZ — MATCH LOBBY**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👑 **Host:** {host_mention}\n"
-        "⚙️ **Settings:** `10 Questions` • `20s/Question` • `Streak & Speed Bonuses`\n\n"
-        f"👥 **Joined Players (1/30):**\n"
-        f"{players_list}\n\n"
-        "👉 Type `/quizjoin` to enter, `/quizstart` to begin!",
-        parse_mode="Markdown"
+    lobby_text = get_quiz_lobby_text(
+        host_name=message.from_user.full_name,
+        host_id=message.from_user.id,
+        players_dict=QUIZ_GAMES[chat_id]["players"],
     )
+    await message.answer(lobby_text, parse_mode="Markdown")
 
 
 @router.message(Command("quizjoin"))
@@ -765,7 +780,7 @@ async def cmd_quiz_join(message: Message):
     game = QUIZ_GAMES.get(message.chat.id)
     if not game or game["status"] != "WAITING":
         return await message.reply("❌ No open quiz lobby to join. Start one with `/quiz`.")
-    
+
     uid = message.from_user.id
     if uid in game["players"]:
         return await message.reply("✅ You are already in the lobby!")
@@ -777,16 +792,14 @@ async def cmd_quiz_join(message: Message):
     game["scores"][uid] = 0
     game["streaks"][uid] = 0
 
-    # Build updated mentioned players list
-    players_text = "\n".join(
-        f"{idx}. [{name}](tg://user?id={pid})" 
-        for idx, (pid, name) in enumerate(game["players"].items(), 1)
+    lobby_text = get_quiz_lobby_text(
+        host_name=game["host_name"],
+        host_id=game["host"],
+        players_dict=game["players"],
     )
-
     await message.answer(
-        f"⚡ **{message.from_user.full_name}** joined the quiz! (`{len(game['players'])}/30`)\n\n"
-        f"👥 **Current Lobby:**\n{players_text}",
-        parse_mode="Markdown"
+        f"⚡ **{message.from_user.full_name}** joined the match!\n\n{lobby_text}",
+        parse_mode="Markdown",
     )
 
 
@@ -845,7 +858,7 @@ async def run_quiz_loop(message: Message, chat_id: int):
             f"**{q_data['q']}**\n\n"
             f"⏱️ *20 seconds remaining...*",
             reply_markup=kb,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         await asyncio.sleep(20)
         if chat_id not in QUIZ_GAMES:
@@ -855,7 +868,7 @@ async def run_quiz_loop(message: Message, chat_id: int):
             await q_msg.edit_text(
                 f"⏰ **TIME'S UP! — Question {idx+1}**\n"
                 f"✅ Correct Answer: **{correct_opt}**",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
         except Exception:
             pass
@@ -921,15 +934,15 @@ async def cmd_add_quiz(message: Message):
     if len(args) < 2:
         await message.answer(
             "⚠️ **Usage:**\n`/addquiz Question | Option1, Option2, Option3, Option4 | CorrectIndex (0-3)`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return
-    
+
     parts = args[1].split("|")
     if len(parts) < 3:
         await message.answer("❌ **Invalid format!** Use `|` to separate question, options, and correct option index.", parse_mode="Markdown")
         return
-        
+
     q_text = parts[0].strip()
     options = [opt.strip() for opt in parts[1].split(",")]
     try:
@@ -937,7 +950,7 @@ async def cmd_add_quiz(message: Message):
     except ValueError:
         await message.answer("❌ Correct index must be a number between 0 and 3.")
         return
-        
+
     if len(options) < 2:
         await message.answer("❌ Please provide at least 2 options separated by commas.")
         return
@@ -946,14 +959,13 @@ async def cmd_add_quiz(message: Message):
         await message.answer(f"❌ Correct index must be between 0 and {len(options)-1}.")
         return
 
-    # Add question dynamically to runtime question bank as well as database if applicable
     new_q = {
         "cat": "Community Added",
         "diff": "Medium",
         "xp": 100,
         "q": q_text,
         "opts": options,
-        "ans": correct_idx
+        "ans": correct_idx,
     }
     QUESTION_BANK.append(new_q)
 
@@ -962,6 +974,6 @@ async def cmd_add_quiz(message: Message):
         f"📌 **Q:** {q_text}\n"
         f"🔢 **Options:** {', '.join(options)}\n"
         f"🎯 **Correct Option Index:** `{correct_idx}`",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
     )
     
