@@ -292,8 +292,322 @@ def get_imposter_lobby_text(host_name: str, host_id: int, mode: str, players_dic
 
     return (
         f"🕵️ **GUESS THE IMPOSTER — LOBBY ({mode.upper()} MODE)**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👑 **Host:** {host_mention}\n"
         f"👥 **Agents Joined ({len(players_dict)}/10):** (Min 3 required)\n"
         f"{player_list}\n\n"
-        f"⚠️ *Every player must start the bot privately first so secret characters can be d
+        "⚠️ *Every player must start the bot privately first so secret characters can be delivered via DM!*\n\n"
+        "👉 Type `/join` to enter • `/startgame` to begin!"
+    )
+
+
+@router.message(Command("imposter"))
+async def cmd_imposter_create(message: Message):
+    if not is_group_chat(message):
+        return await message.answer(
+            "❌ **Guess the Imposter can only be played inside group chats!** Add me to a group to host a match.",
+            parse_mode="Markdown",
+        )
+
+    chat_id = message.chat.id
+    if chat_id in IMPOSTER_LOBBIES:
+        return await message.reply("⚠️ An Imposter lobby is already active in this group!")
+
+    args = message.text.split()
+    mode = args[1].lower() if len(args) > 1 and args[1].lower() in {"classic", "double", "blind"} else "classic"
+    await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
+
+    IMPOSTER_LOBBIES[chat_id] = {
+        "host": message.from_user.id,
+        "host_name": message.from_user.full_name,
+        "mode": mode,
+        "phase": "WAITING",
+        "players": {message.from_user.id: message.from_user.full_name},
+        "alive": set(),
+        "imposters": set(),
+        "hints": {},
+        "votes": {},
+        "round_num": 0,
+    }
+
+    lobby_text = get_imposter_lobby_text(
+        host_name=message.from_user.full_name,
+        host_id=message.from_user.id,
+        mode=mode,
+        players_dict=IMPOSTER_LOBBIES[chat_id]["players"],
+    )
+    await message.answer(lobby_text, parse_mode="Markdown")
+
+
+@router.message(Command("join"))
+async def cmd_generic_join(message: Message):
+    if not is_group_chat(message):
+        return await message.reply("❌ Game lobbies can only be joined inside group chats.")
+
+    chat_id = message.chat.id
+    from handlers.mafia import MAFIA_LOBBIES
+    if chat_id in MAFIA_LOBBIES:
+        from handlers.mafia import join_mafia_lobby
+        return await join_mafia_lobby(message)
+
+    lobby = IMPOSTER_LOBBIES.get(chat_id)
+    if not lobby or lobby["phase"] != "WAITING":
+        return await message.reply("❌ No waiting lobby found. Start `/imposter` or `/mafia`.")
+
+    uid = message.from_user.id
+    if uid in lobby["players"]:
+        return await message.reply("✅ You already joined!")
+    if len(lobby["players"]) >= 10:
+        return await message.reply("🚫 Lobby full (10/10).")
+
+    await ensure_user(uid, message.from_user.username, message.from_user.full_name)
+    lobby["players"][uid] = message.from_user.full_name
+
+    lobby_text = get_imposter_lobby_text(
+        host_name=lobby["host_name"],
+        host_id=lobby["host"],
+        mode=lobby["mode"],
+        players_dict=lobby["players"],
+    )
+    await message.answer(
+        f"🕵️ **{message.from_user.full_name}** joined the Imposter lobby!\n\n{lobby_text}",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("leave"))
+async def cmd_generic_leave(message: Message):
+    chat_id = message.chat.id
+    from handlers.mafia import MAFIA_LOBBIES
+    if chat_id in MAFIA_LOBBIES:
+        from handlers.mafia import leave_mafia_lobby
+        return await leave_mafia_lobby(message)
+
+    lobby = IMPOSTER_LOBBIES.get(chat_id)
+    uid = message.from_user.id
+    if lobby and lobby["phase"] == "WAITING" and uid in lobby["players"]:
+        del lobby["players"][uid]
+        if not lobby["players"]:
+            IMPOSTER_LOBBIES.pop(chat_id, None)
+            return await message.answer("🗑️ Lobby closed because all players left.")
+        if uid == lobby["host"]:
+            new_host_id = next(iter(lobby["players"]))
+            lobby["host"] = new_host_id
+            lobby["host_name"] = lobby["players"][new_host_id]
+            await message.answer(f"👑 Host left! New host: **{lobby['players'][new_host_id]}**", parse_mode="Markdown")
+        else:
+            await message.answer(f"🚪 **{message.from_user.full_name}** left the lobby.")
+
+
+@router.message(Command("startgame"))
+async def cmd_generic_startgame(message: Message):
+    chat_id = message.chat.id
+    from handlers.mafia import MAFIA_LOBBIES
+    if chat_id in MAFIA_LOBBIES:
+        from handlers.mafia import start_mafia_game
+        return await start_mafia_game(message)
+
+    lobby = IMPOSTER_LOBBIES.get(chat_id)
+    if not lobby or lobby["phase"] != "WAITING":
+        return await message.reply("❌ No active lobby ready to start.")
+    if message.from_user.id != lobby["host"]:
+        return await message.reply("⚠️ Only the host can start the game.")
+    if len(lobby["players"]) < 3:
+        return await message.reply("⚠️ Minimum **3 players** required for Guess the Imposter.")
+
+    lobby["phase"] = "DISTRIBUTING"
+    player_ids = list(lobby["players"].keys())
+    lobby["alive"] = set(player_ids)
+
+    imp_count = 2 if (lobby["mode"] == "double" and len(player_ids) >= 5) else 1
+    imposters = set(random.sample(player_ids, k=imp_count))
+    lobby["imposters"] = imposters
+
+    crew_char, imp_char = random.sample(ANIME_CHARACTERS, k=2)
+    lobby["crew_char"] = crew_char
+    lobby["imp_char"] = imp_char
+
+    for pid in player_ids:
+        try:
+            if pid in imposters:
+                if lobby["mode"] == "blind":
+                    secret_text = (
+                        "🤫 **YOU ARE THE IMPOSTER! (BLIND MODE)**\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🙈 You received **NO character**!\n"
+                        "Listen to everyone else's descriptions, blend in, and survive the vote!"
+                    )
+                else:
+                    secret_text = (
+                        "🤫 **YOU ARE THE IMPOSTER!**\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🎭 **Your Decoy Character:** `{imp_char}`\n"
+                        "Everyone else got a different character! Describe yours carefully so you don't get caught!"
+                    )
+            else:
+                secret_text = (
+                    "🛡️ **YOU ARE A CREWMATE!**\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🌟 **Your Anime Character:** `{crew_char}`\n"
+                    "Describe this character without making it too obvious for the Imposter!"
+                )
+            await message.bot.send_message(pid, secret_text, parse_mode="Markdown")
+        except Exception:
+            IMPOSTER_LOBBIES.pop(chat_id, None)
+            return await message.answer(
+                f"❌ **DM Delivery Failed!** **{lobby['players'][pid]}** must start the bot in private chat first. Match aborted."
+            )
+
+    asyncio.create_task(run_imposter_phases(message, chat_id))
+
+
+async def run_imposter_phases(message: Message, chat_id: int):
+    lobby = IMPOSTER_LOBBIES.get(chat_id)
+    if not lobby:
+        return
+
+    await message.answer(
+        "📩 **SECRET ANIME CHARACTERS SENT VIA DM!**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Check your private messages! Each round, describe your character in chat (or lock in a clue with `/hint`) before voting begins.",
+        parse_mode="Markdown",
+    )
+
+    while chat_id in IMPOSTER_LOBBIES:
+        lobby["round_num"] += 1
+        lobby["phase"] = "DESCRIBING"
+        lobby["hints"] = {}
+        lobby["votes"] = {}
+
+        alive_mentions = ", ".join(
+            f"[{lobby['players'][uid]}](tg://user?id={uid})" for uid in lobby["alive"]
+        )
+
+        await message.answer(
+            f"🗣️ **ROUND {lobby['round_num']} — CHARACTER DESCRIPTION (45s)**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👥 **Alive Players ({len(lobby['alive'])}):** {alive_mentions}\n\n"
+            f"Describe your character in the chat now! (Optional: `/hint your clue`)",
+            parse_mode="Markdown",
+        )
+        await asyncio.sleep(45)
+        if chat_id not in IMPOSTER_LOBBIES:
+            return
+
+        if lobby["hints"]:
+            hint_lines = "\n".join(
+                f"• **{lobby['players'][uid]}:** _{clue}_" for uid, clue in lobby["hints"].items() if uid in lobby["alive"]
+            )
+            await message.answer(f"📝 **Locked-In Clues:**\n{hint_lines}", parse_mode="Markdown")
+
+        lobby["phase"] = "VOTING"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=f"🗳️ Vote {lobby['players'][uid]}", callback_data=f"impvote:{chat_id}:{uid}")]
+                for uid in lobby["alive"]
+            ]
+        )
+        await message.answer(
+            f"🗳️ **ROUND {lobby['round_num']} — ELIMINATION VOTING (30s)**\n"
+            f"Who is describing a different character? Tap below to vote!",
+            reply_markup=kb,
+            parse_mode="Markdown",
+        )
+        await asyncio.sleep(30)
+        if chat_id not in IMPOSTER_LOBBIES:
+            return
+
+        tally: dict[int, int] = {}
+        for voter, target in lobby["votes"].items():
+            if voter in lobby["alive"] and target in lobby["alive"]:
+                tally[target] = tally.get(target, 0) + 1
+
+        if tally:
+            eliminated = max(tally, key=tally.get)
+            lobby["alive"].remove(eliminated)
+            was_imp = eliminated in lobby["imposters"]
+            await message.answer(
+                f"⚖️ **VOTING RESULTS — ROUND {lobby['round_num']}**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚫 **{lobby['players'][eliminated]}** was voted out!\n"
+                f"Identity: **{'🤫 AN IMPOSTER!' if was_imp else '🛡️ AN INNOCENT CREWMATE!'}**",
+                parse_mode="Markdown",
+            )
+        else:
+            await message.answer(
+                f"🤷 **No votes cast in Round {lobby['round_num']}!** Nobody was eliminated.",
+                parse_mode="Markdown",
+            )
+
+        alive_imps = [u for u in lobby["alive"] if u in lobby["imposters"]]
+        alive_crew = [u for u in lobby["alive"] if u not in lobby["imposters"]]
+
+        if not alive_imps:
+            return await finalize_imposter_match(message, chat_id, crew_won=True)
+
+        if len(alive_imps) >= len(alive_crew):
+            return await finalize_imposter_match(message, chat_id, crew_won=False)
+
+        await asyncio.sleep(3)
+
+
+async def finalize_imposter_match(message: Message, chat_id: int, crew_won: bool):
+    lobby = IMPOSTER_LOBBIES.pop(chat_id, None)
+    if not lobby:
+        return
+
+    imp_names = ", ".join(lobby["players"][i] for i in lobby["imposters"])
+    imp_char_display = "None (Blind Mode)" if lobby["mode"] == "blind" else lobby["imp_char"]
+
+    for uid in lobby["players"]:
+        is_imp = uid in lobby["imposters"]
+        won = (not is_imp and crew_won) or (is_imp and not crew_won)
+        await record_progression(
+            uid,
+            chat_id,
+            xp=250 if won else 60,
+            coins=100 if won else 25,
+            won_mode="imposter" if won else None,
+        )
+
+    await message.answer(
+        f"🎭 **GUESS THE IMPOSTER — FINAL RESULTS**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏆 **{'CREWMATES WIN! All Imposters caught!' if crew_won else 'IMPOSTERS WIN! They outlasted the Crew!'}**\n\n"
+        f"🤫 **True Imposter(s):** `{imp_names}`\n"
+        f"🌟 **Crewmate Character:** `{lobby['crew_char']}`\n"
+        f"🎭 **Imposter Character:** `{imp_char_display}`",
+        parse_mode="Markdown",
+    )
+
+
+@router.message(Command("hint"))
+async def cmd_submit_hint(message: Message):
+    lobby = IMPOSTER_LOBBIES.get(message.chat.id)
+    if not lobby or lobby["phase"] != "DESCRIBING":
+        return
+    uid = message.from_user.id
+    if uid not in lobby["alive"]:
+        return
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        return await message.reply("Usage: `/hint <your description>`")
+    lobby["hints"][uid] = parts[1][:100]
+    await message.reply(f"✅ Clue saved for **{message.from_user.full_name}**!")
+
+
+@router.callback_query(F.data.startswith("impvote:"))
+async def cb_imposter_vote(callback: CallbackQuery):
+    _, chat_id_s, target_s = callback.data.split(":")
+    lobby = IMPOSTER_LOBBIES.get(int(chat_id_s))
+    if not lobby or lobby["phase"] != "VOTING":
+        return await callback.answer("Voting is closed.", show_alert=True)
+    voter = callback.from_user.id
+    if voter not in lobby["alive"]:
+        return await callback.answer("You are eliminated or not in this match.", show_alert=True)
+    target = int(target_s)
+    if target not in lobby["alive"]:
+        return await callback.answer("That player is already eliminated.", show_alert=True)
+    lobby["votes"][voter] = target
+    await callback.answer(f"🗳️ Vote cast against {lobby['players'][target]}!")
+        
