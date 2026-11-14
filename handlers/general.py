@@ -65,14 +65,17 @@ async def render_profile(user_id: int, bot: Bot) -> tuple[BufferedInputFile | No
         bar = "🟩" * filled + "⬛" * (10 - filled)
         title = get_rank_title(user.level, user.equipped_border)
 
-        # 1. Custom Image Background & Drawing
-        card = Image.new("RGB", (800, 400), color=(25, 25, 35))
+        # 1. Custom Dark Card Background (Matching your UI theme)
+        card = Image.new("RGB", (800, 420), color=(18, 18, 26))
         draw = ImageDraw.Draw(card)
 
-        # Draw default avatar placeholder circle
-        draw.ellipse((40, 40, 180, 180), fill=(55, 55, 75), outline=(0, 255, 127), width=3)
+        # Draw outer glowing border frame
+        draw.rectangle([10, 10, 790, 410], outline=(138, 43, 226), width=2)
 
-        # 2. User ki Telegram PFP fetch karke draw karein
+        # Avatar circle placeholder
+        draw.ellipse((40, 40, 180, 180), fill=(30, 30, 45), outline=(255, 105, 180), width=3)
+
+        # 2. Fetch Telegram PFP if available
         try:
             photos = await bot.get_user_profile_photos(user_id, limit=1)
             if photos.total_count > 0:
@@ -87,36 +90,52 @@ async def render_profile(user_id: int, bot: Bot) -> tuple[BufferedInputFile | No
 
                 card.paste(pfp, (40, 40), mask)
         except Exception:
-            pass  # Agar PFP private ho ya na mile toh placeholder circle dikhega
+            pass
 
-        # 3. Text Overlay on Image (Clean ASCII text for default PIL font)
         display_name = getattr(user, "full_name", None) or "Player"
         tickets_count = getattr(user, "tickets", 0)
 
-        draw.text((210, 45), f"PLAYER PROFILE - {display_name}", fill=(255, 255, 255))
-        draw.text((210, 95), f"Rank: {title} (Level {user.level})", fill=(0, 255, 127))
-        draw.text((210, 140), f"XP: {user.xp:,}  |  Coins: {user.coins:,}", fill=(255, 215, 0))
-        draw.text((210, 185), f"Tickets: {tickets_count}  |  Total Wins: {total_wins}", fill=(255, 105, 180))
+        # 3. Drawing text overlay onto the generated card image
+        draw.text((210, 45), display_name, fill=(255, 255, 255))
+        draw.text((210, 80), "YOUR WALLET / YOUR POWER", fill=(160, 160, 180))
+        draw.line((210, 110, 750, 110), fill=(138, 43, 226), width=2)
+
+        # Stat Boxes info representation inside image
+        draw.text((210, 130), f"CRIMSON / RANK: {title.upper()}", fill=(255, 105, 180))
+        draw.text((210, 160), f"Level {user.level}  |  XP: {user.xp:,}", fill=(255, 255, 255))
+
+        draw.text((210, 225), f"COINS", fill=(255, 215, 0))
+        draw.text((210, 255), f"{user.coins:,}", fill=(255, 255, 255))
+
+        draw.text((40, 350), "LEVEL UP. KEEP BUILDING.", fill=(160, 160, 180))
+        draw.text((40, 375), "XENO • WALLET", fill=(138, 43, 226))
 
         output = BytesIO()
         card.save(output, format="PNG")
         output.seek(0)
         photo_file = BufferedInputFile(output.read(), filename="profile.png")
 
-        # 4. Text caption niche ke liye
+        # 4. Text caption matching your exact clean style
         caption = (
-            f"🪪 **PLAYER PROFILE — {display_name}**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏅 **Rank:** {title} • Level {user.level}\n"
-            f"🖼️ **Border:** `{user.equipped_border}`\n"
-            f"✨ **XP:** `{user.xp:,}`  |  🪙 **Coins:** `{user.coins:,}`  |  🎟️ **Tickets:** `{tickets_count}`\n"
-            f"📊 **Level Progress:** `{xp_in_lvl}/500 XP`\n"
-            f"{bar}\n\n"
-            f"📈 **BATTLE STATISTICS**\n"
-            f"• 🧠 Quiz Wins: `{user.quiz_wins}`  |  🕵️ Imposter Wins: `{user.imposter_wins}`\n"
-            f"• 🌙 Mafia Wins: `{user.mafia_wins}`  |  ⛪ Town Wins: `{user.town_wins}`\n"
-            f"• 🏆 Total Wins: `{total_wins}`\n"
-            f"• 🔥 Best Streak: `{user.best_streak}`"
+            f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+            f"┃  👤 **{display_name}**\n"
+            f"┃  _YOUR WALLET / YOUR POWER_\n"
+            f"┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫\n"
+            f"┃\n"
+            f"┃  🪙 **COINS**\n"
+            f"┃     `{user.coins:,}`\n"
+            f"┃\n"
+            f"┃  ✨ **XP & LEVEL**\n"
+            f"┃     Level {user.level}  •  {user.xp:,} XP\n"
+            f"┃\n"
+            f"┃  🎟️ **TICKETS & WINS**\n"
+            f"┃     Tickets: {tickets_count}  •  Wins: {total_wins}\n"
+            f"┃\n"
+            f"┃  📊 **PROGRESS ({xp_in_lvl}/500 XP)**\n"
+            f"┃     {bar}\n"
+            f"┃\n"
+            f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n"
+            f"   `LEVEL UP. KEEP BUILDING.`"
         )
         return photo_file, caption
 
