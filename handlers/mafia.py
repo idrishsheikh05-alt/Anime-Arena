@@ -3,6 +3,7 @@ import random
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ChatType
 from database import ensure_user, record_progression
 
 router = Router()
@@ -25,6 +26,31 @@ ROLE_META = {
 }
 
 
+def is_group_chat(message: Message) -> bool:
+    return message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
+
+
+def get_mafia_lobby_text(host_name: str, host_id: int, players_dict: dict) -> str:
+    if players_dict:
+        player_list = "\n".join(
+            [f"{idx}. 👤 [{name}](tg://user?id={uid})" for idx, (uid, name) in enumerate(players_dict.items(), 1)]
+        )
+    else:
+        player_list = "• *The village is quiet...*"
+
+    host_mention = f"[{host_name}](tg://user?id={host_id})"
+
+    return (
+        f"🌙 **ANIME MAFIA — TOWN SQUARE**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👑 **Town Mayor (Host):** {host_mention}\n"
+        f"👥 **Citizens Assembled ({len(players_dict)}/20):**\n"
+        f"{player_list}\n\n"
+        f"⚠️ *Roles will be assigned secretly in PM once the game starts.*\n"
+        f"👉 Type `/join` to enter the village, `/startgame` to begin the night!"
+    )
+
+
 def build_role_pool(count: int) -> list[str]:
     base = ["DON", "DETECTIVE", "DOCTOR", "CITIZEN", "CITIZEN"]
     if count >= 6:
@@ -44,6 +70,9 @@ def build_role_pool(count: int) -> list[str]:
 
 @router.message(Command("mafia"))
 async def cmd_mafia_create(message: Message):
+    if not is_group_chat(message):
+        return await message.answer("❌ **Anime Mafia can only be played inside group chats!** Add me to a group to host a match.", parse_mode="Markdown")
+
     chat_id = message.chat.id
     if chat_id in MAFIA_LOBBIES:
         return await message.reply("⚠️ An Anime Mafia match is already active in this group!")
@@ -51,23 +80,23 @@ async def cmd_mafia_create(message: Message):
     await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
     MAFIA_LOBBIES[chat_id] = {
         "host": message.from_user.id,
+        "host_name": message.from_user.full_name,
         "phase": "LOBBY",
         "players": {message.from_user.id: message.from_user.full_name},
         "alive": set(),
         "roles": {},
-        "mafia_seniority": [],  # Ordered list: [Don_id, MafiaA_id, MafiaB_id]
+        "mafia_seniority": [],
         "night_actions": {},
         "votes": {},
         "night_num": 0,
     }
-    await message.answer(
-        "🌙 **ANIME MAFIA — STRATEGIC DEDUCTION**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👑 **Host:** {message.from_user.full_name}\n"
-        "👥 **Players:** `1/20` (Recommended: 6–20 players; Min 4 for testing)\n\n"
-        "⚠️ *Start the bot in DM first to receive secret roles & night action buttons!*\n"
-        "👉 `/join` to enter • `/startgame` to begin • `/mafiahelp` for rules"
+    
+    lobby_text = get_mafia_lobby_text(
+        host_name=message.from_user.full_name,
+        host_id=message.from_user.id,
+        players_dict=MAFIA_LOBBIES[chat_id]["players"]
     )
+    await message.answer(lobby_text, parse_mode="Markdown")
 
 
 @router.message(Command("mafiahelp"))
@@ -78,26 +107,48 @@ async def cmd_mafia_help(message: Message):
         "• **Teams:** 🏘️ Town vs 🗡️ Mafia vs 🃏 Independent\n"
         "• **Night Phase:** Special roles act privately via bot DM.\n"
         "• **Don Succession:** If the Don dies, the senior surviving Mafia automatically inherits the Don title.\n"
-        "• **Day Phase:** Discuss morning casualties and vote out suspects."
+        "• **Day Phase:** Discuss morning casualties and vote out suspects.\n\n"
+        "👉 **Commands:** `/join`, `/leave`, `/startgame`, `/mafiahelp`",
+        parse_mode="Markdown"
     )
 
 
+@router.message(Command("join"))
 async def join_mafia_lobby(message: Message):
-    game = MAFIA_LOBBIES[message.chat.id]
+    if not is_group_chat(message):
+        return await message.reply("❌ Mafia lobbies can only be joined inside group chats.")
+
+    game = MAFIA_LOBBIES.get(message.chat.id)
+    if not game:
+        return await message.reply("❌ No open Mafia lobby found. Start one with `/mafia`.")
     if game["phase"] != "LOBBY":
         return await message.reply("🚫 Match already in progress!")
+    
     uid = message.from_user.id
     if uid in game["players"]:
         return await message.reply("✅ Already in the Mafia lobby.")
     if len(game["players"]) >= 20:
         return await message.reply("🚫 Lobby full (20/20).")
+
     await ensure_user(uid, message.from_user.username, message.from_user.full_name)
     game["players"][uid] = message.from_user.full_name
-    await message.answer(f"🌙 **{message.from_user.full_name}** entered the Mafia lobby! (`{len(game['players'])}/20`)")
+
+    lobby_text = get_mafia_lobby_text(
+        host_name=game["host_name"],
+        host_id=game["host"],
+        players_dict=game["players"]
+    )
+    await message.answer(
+        f"⚡ **{message.from_user.full_name}** entered the village!\n\n{lobby_text}",
+        parse_mode="Markdown"
+    )
 
 
+@router.message(Command("leave"))
 async def leave_mafia_lobby(message: Message):
-    game = MAFIA_LOBBIES[message.chat.id]
+    game = MAFIA_LOBBIES.get(message.chat.id)
+    if not game:
+        return
     uid = message.from_user.id
     if game["phase"] == "LOBBY" and uid in game["players"]:
         del game["players"][uid]
@@ -107,22 +158,23 @@ async def leave_mafia_lobby(message: Message):
         await message.answer(f"🚪 **{message.from_user.full_name}** left the Mafia lobby.")
 
 
+@router.message(Command("startgame"))
 async def start_mafia_game(message: Message):
     chat_id = message.chat.id
-    game = MAFIA_LOBBIES[chat_id]
-    if game["phase"] != "LOBBY":
+    game = MAFIA_LOBBIES.get(chat_id)
+    if not game or game["phase"] != "LOBBY":
         return
     if message.from_user.id != game["host"]:
         return await message.reply("⚠️ Only the host can start the game.")
     if len(game["players"]) < 4:
         return await message.reply("⚠️ Minimum **4 players** required to launch Anime Mafia.")
 
+    game["phase"] = "STARTING"
     pids = list(game["players"].keys())
     random.shuffle(pids)
     pool = build_role_pool(len(pids))
     random.shuffle(pool)
 
-    # Assign roles and record Mafia seniority order (Don first, then Mafia)
     mafia_members = []
     for pid, role in zip(pids, pool):
         game["roles"][pid] = role
@@ -148,6 +200,7 @@ async def start_mafia_game(message: Message):
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"Role: **{r_name}** (`{team} Team`)\n"
                 f"Ability: _{desc}_{teammates}",
+                parse_mode="Markdown"
             )
         except Exception:
             MAFIA_LOBBIES.pop(chat_id, None)
@@ -155,6 +208,7 @@ async def start_mafia_game(message: Message):
                 f"❌ **DM Failed!** **{game['players'][pid]}** must start the bot privately first. Match cancelled."
             )
 
+    await message.answer("🌙 Roles successfully distributed in DMs! The first night begins...")
     asyncio.create_task(run_mafia_cycle(message, chat_id))
 
 
@@ -173,7 +227,6 @@ def check_mafia_winner(game: dict) -> str | None:
     alive = game["alive"]
     mafia_alive = [p for p in alive if ROLE_META[game["roles"][p]][1] == "Mafia"]
     sk_alive = [p for p in alive if game["roles"][p] == "SERIAL_KILLER"]
-    town_alive = [p for p in alive if ROLE_META[game["roles"][p]][1] == "Town"]
 
     if not mafia_alive and not sk_alive:
         return "TOWN"
@@ -196,10 +249,11 @@ async def run_mafia_cycle(message: Message, chat_id: int):
 
         await message.answer(
             f"🌃 **NIGHT {game['night_num']} FALLS OVER THE CITY...**\n"
-            "Special roles: check your bot DM to perform your night actions! (`35s`)"
+            "Special roles: check your bot DM to perform your night actions! (`35s`)",
+            parse_mode="Markdown"
         )
 
-        # Send night action keyboards in DM
+        # Send night action keyboards in DM safely
         for pid in list(game["alive"]):
             role = game["roles"][pid]
             if role in {"DON", "DETECTIVE", "DOCTOR", "BODYGUARD", "VIGILANTE", "CONSIGLIERE", "SERIAL_KILLER"}:
@@ -211,7 +265,12 @@ async def run_mafia_cycle(message: Message, chat_id: int):
                     ]
                 )
                 try:
-                    await message.bot.send_message(pid, f"🌙 **Night {game['night_num']} Action ({ROLE_META[role][0]}):** Choose target:", reply_markup=kb)
+                    await message.bot.send_message(
+                        pid, 
+                        f"🌙 **Night {game['night_num']} Action ({ROLE_META[role][0]}):** Choose your target:", 
+                        reply_markup=kb,
+                        parse_mode="Markdown"
+                    )
                 except Exception:
                     pass
 
@@ -235,13 +294,13 @@ async def run_mafia_cycle(message: Message, chat_id: int):
             elif r == "DETECTIVE":
                 t_team = ROLE_META[game["roles"][target]][1]
                 try:
-                    await message.bot.send_message(actor, f"🔍 **Investigation Result:** `{game['players'][target]}` belongs to **{t_team}**.")
+                    await message.bot.send_message(actor, f"🔍 **Investigation Result:** `{game['players'][target]}` belongs to **{t_team}**.", parse_mode="Markdown")
                 except Exception:
                     pass
             elif r == "CONSIGLIERE":
                 t_role = ROLE_META[game["roles"][target]][0]
                 try:
-                    await message.bot.send_message(actor, f"📜 **Consigliere Intel:** `{game['players'][target]}` is **{t_role}**.")
+                    await message.bot.send_message(actor, f"📜 **Consigliere Intel:** `{game['players'][target]}` is **{t_role}**.", parse_mode="Markdown")
                 except Exception:
                     pass
 
@@ -254,13 +313,13 @@ async def run_mafia_cycle(message: Message, chat_id: int):
         new_don = promote_next_don(game)
         if new_don:
             try:
-                await message.bot.send_message(new_don, "🎩 **The Don has fallen!** By seniority, you are now the **NEW DON**.")
+                await message.bot.send_message(new_don, "🎩 **The Don has fallen!** By seniority, you are now the **NEW DON**.", parse_mode="Markdown")
             except Exception:
                 pass
 
         game["phase"] = "MORNING"
         report = "\n".join(casualties) if casualties else "🌅 **A peaceful night!** Nobody was eliminated."
-        await message.answer(f"☀️ **MORNING {game['night_num']} REPORT**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{report}")
+        await message.answer(f"☀️ **MORNING {game['night_num']} REPORT**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{report}", parse_mode="Markdown")
 
         winner = check_mafia_winner(game)
         if winner:
@@ -268,7 +327,7 @@ async def run_mafia_cycle(message: Message, chat_id: int):
 
         # Discussion & Voting
         game["phase"] = "DISCUSSION"
-        await message.answer("🗣️ **DAY DISCUSSION (45s)** — Uncover the Mafia before voting begins!")
+        await message.answer("🗣️ **DAY DISCUSSION (45s)** — Uncover the Mafia before voting begins!", parse_mode="Markdown")
         await asyncio.sleep(45)
         if chat_id not in MAFIA_LOBBIES:
             return
@@ -277,11 +336,11 @@ async def run_mafia_cycle(message: Message, chat_id: int):
         game["votes"] = {}
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"⚖️ Vote {game['players'][p]}", callback_data=f"mafvote:{p}")]
+                [InlineKeyboardButton(text=f"⚖️ Vote {game['players'][p]}", callback_data=f"mafvote:{chat_id}:{p}")]
                 for p in game["alive"]
             ]
         )
-        await message.answer("🗳️ **DAYTIME ELIMINATION VOTE (30s)**", reply_markup=kb)
+        await message.answer("🗳️ **DAYTIME ELIMINATION VOTE (30s)**", reply_markup=kb, parse_mode="Markdown")
         await asyncio.sleep(30)
         if chat_id not in MAFIA_LOBBIES:
             return
@@ -298,18 +357,19 @@ async def run_mafia_cycle(message: Message, chat_id: int):
             exec_role = game["roles"][executed]
             await message.answer(
                 f"⚖️ **THE TOWN HAS SPOKEN!**\n"
-                f"**{game['players'][executed]}** was executed! Role: **{ROLE_META[exec_role][0]}**"
+                f"**{game['players'][executed]}** was executed! Role: **{ROLE_META[exec_role][0]}**",
+                parse_mode="Markdown"
             )
             if exec_role == "JESTER":
                 return await finalize_mafia_match(message, chat_id, "JESTER", jester_id=executed)
             new_don = promote_next_don(game)
             if new_don:
                 try:
-                    await message.bot.send_message(new_don, "🎩 **The Don was executed!** You are now the **NEW DON**.")
+                    await message.bot.send_message(new_don, "🎩 **The Don was executed!** You are now the **NEW DON**.", parse_mode="Markdown")
                 except Exception:
                     pass
         else:
-            await message.answer("🤷 **No majority reached.** Nobody was executed today.")
+            await message.answer("🤷 **No majority reached.** Nobody was executed today.", parse_mode="Markdown")
 
         winner = check_mafia_winner(game)
         if winner:
@@ -330,7 +390,7 @@ async def finalize_mafia_match(message: Message, chat_id: int, winner: str, jest
         await record_progression(pid, chat_id, xp=300 if won else 75, coins=120 if won else 25, won_mode=mode_tag if won else None)
         summary.append(f"• **{name}** — {ROLE_META[role][0]} ({'🏆 WIN' if won else '💀 LOSS'})")
 
-    await message.answer("\n".join(summary))
+    await message.answer("\n".join(summary), parse_mode="Markdown")
 
 
 @router.callback_query(F.data.startswith("mafnight:"))
@@ -345,17 +405,21 @@ async def cb_mafia_night(callback: CallbackQuery):
 
     target = int(target_s)
     game["night_actions"][uid] = target
-    await callback.message.edit_text(f"✅ Night target confirmed: **{game['players'][target]}**")
+    try:
+        await callback.message.edit_text(f"✅ Night target confirmed: **{game['players'][target]}**", parse_mode="Markdown")
+    except Exception:
+        pass
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("mafvote:"))
 async def cb_mafia_vote(callback: CallbackQuery):
-    game = MAFIA_LOBBIES.get(callback.message.chat.id)
+    _, chat_id_s, target_s = callback.data.split(":")
+    game = MAFIA_LOBBIES.get(int(chat_id_s))
     uid = callback.from_user.id
     if not game or game["phase"] != "VOTING" or uid not in game["alive"]:
         return await callback.answer("Voting is closed or you are eliminated.", show_alert=True)
-    target = int(callback.data.split(":")[1])
+    target = int(target_s)
     game["votes"][uid] = target
     await callback.answer(f"⚖️ Vote registered against {game['players'][target]}!")
-  
+        
