@@ -705,8 +705,7 @@ QUESTION_BANK = [
     {"cat": "Code Geass", "diff": "Hard", "xp": 150, "q": "What is the name of C.C.'s original Geass contract partner?", "opts": ["Lelouch", "Charles zi Britannia", "A young nun", "Marianne"], "ans": 2},
     {"cat": "Death Note", "diff": "Hard", "xp": 150, "q": "What is the name of the Shinigami who gave Misa her Death Note?", "opts": ["Ryuk", "Rem", "Gelus", "Sidoh"], "ans": 1},
     {"cat": "Tokyo Ghoul", "diff": "Hard", "xp": 150, "q": "Which investigator was known as the CCG's Reaper?", "opts": ["Kishou Arima", "Koutarou Amon", "Juuzou Suzuya", "Kureo Mado"], "ans": 0},
-    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "What was the original Quirk of the first One For All holder?", "opts": ["Stockpiling", "Transference", "A Quirk that allowed him to pass on his power", "He originally had no Quirk"]
-], "ans": 3},
+    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "What was the original Quirk of the first One For All holder?", "opts": ["Stockpiling", "Transference", "A Quirk that allowed him to pass on his power", "He originally had no Quirk"], "ans": 1},
     {"cat": "Fairy Tail", "diff": "Hard", "xp": 150, "q": "What was the name of the first master of Fairy Tail?", "opts": ["Mavis Vermillion", "Precht Gaebolg", "Makarov Dreyar", "Hades"], "ans": 0},
     {"cat": "Vinland Saga", "diff": "Hard", "xp": 150, "q": "What was the name of Thorfinn's father?", "opts": ["Thors", "Thorkell", "Askeladd", "Leif Erikson"], "ans": 0},
     {"cat": "Mob Psycho 100", "diff": "Hard", "xp": 150, "q": "What is the name of the spirit that possesses Mob's younger brother?", "opts": ["Dimple", "Toichiro Suzuki", "Ekubo", "No spirit permanently possesses Ritsu"], "ans": 3},
