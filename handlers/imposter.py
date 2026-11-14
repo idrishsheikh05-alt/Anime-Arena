@@ -10,269 +10,140 @@ router = Router()
 
 IMPOSTER_LOBBIES: dict[int, dict] = {}
 
-# 1,000+ Unique Anime Characters Pool
+# Massive Comprehensive Anime Characters Pool (50+ per Big Anime, 20+ per other)
 ANIME_CHARACTERS = [
-    # Naruto & Boruto (80)
-    "Naruto Uzumaki", "Sasuke Uchiha", "Sakura Haruno", "Kakashi Hatake", "Itachi Uchiha",
-    "Madara Uchiha", "Obito Uchiha", "Minato Namikaze", "Kushina Uzumaki", "Jiraiya",
-    "Tsunade", "Orochimaru", "Nagato Uzumaki", "Pain", "Konan",
-    "Kisame Hoshigaki", "Deidara", "Sasori", "Hidan", "Kakuzu",
-    "Zetsu", "Gaara", "Temari", "Kankuro", "Rock Lee",
-    "Neji Hyuga", "Hinata Hyuga", "Tenten", "Might Guy", "Shikamaru Nara",
-    "Ino Yamanaka", "Choji Akimichi", "Asuma Sarutobi", "Kurenai Yuhi", "Kiba Inuzuka",
-    "Shino Aburame", "Hiruzen Sarutobi", "Tobirama Senju", "Hashirama Senju", "Danzo Shimura",
-    "Killer Bee", "A (Fourth Raikage)", "Mei Terumi", "Onoki", "Kabuto Yakushi",
-    "Suigetsu Hozuki", "Karin", "Jugo", "Zabuza Momochi", "Haku",
-    "Shisui Uchiha", "Rin Nohara", "Iruka Umino", "Konohamaru Sarutobi", "Yamato",
-    "Sai", "Kaguya Otsutsuki", "Hagoromo Otsutsuki", "Hamura Otsutsuki", "Indra Otsutsuki",
-    "Ashura Otsutsuki", "Momoshiki Otsutsuki", "Kinshiki Otsutsuki", "Isshiki Otsutsuki", "Boruto Uzumaki",
-    "Sarada Uchiha", "Mitsuki", "Kawaki", "Himawari Uzumaki", "Shikadai Nara",
-    "Inojin Yamanaka", "Chocho Akimichi", "Metal Lee", "Sumire Kakei", "Mirai Sarutobi",
-    "Hanabi Hyuga", "Hiashi Hyuga", "Kurama", "Gyuki", "Shukaku",
+    # ── NARUTO (50+ Characters) ──────────────────────────
+    ("Naruto Uzumaki", "Naruto"), ("Sasuke Uchiha", "Naruto"), ("Sakura Haruno", "Naruto"), ("Kakashi Hatake", "Naruto"), ("Itachi Uchiha", "Naruto"),
+    ("Madara Uchiha", "Naruto"), ("Obito Uchiha", "Naruto"), ("Minato Namikaze", "Naruto"), ("Jiraiya", "Naruto"), ("Tsunade", "Naruto"),
+    ("Hinata Hyuga", "Naruto"), ("Shikamaru Nara", "Naruto"), ("Gaara", "Naruto"), ("Pain / Nagato", "Naruto"), ("Killer Bee", "Naruto"),
+    ("Rock Lee", "Naruto"), ("Neji Hyuga", "Naruto"), ("Tent-Tent / Tenten", "Naruto"), ("Sai", "Naruto"), ("Yamato", "Naruto"),
+    ("Hashirama Senju", "Naruto"), ("Tobirama Senju", "Naruto"), ("Hiruzen Sarutobi", "Naruto"), ("Danzo Shimura", "Naruto"), ("Orochimaru", "Naruto"),
+    ("Kabuto Yakushi", "Naruto"), ("Deidara", "Naruto"), ("Sasori", "Naruto"), ("Hidan", "Naruto"), ("Kakuzu", "Naruto"),
+    ("Kisame Hoshigaki", "Naruto"), ("Konan", "Naruto"), ("Zabuza Momochi", "Naruto"), ("Haku", "Naruto"), ("Kiba Inuzuka", "Naruto"),
+    ("Shino Aburame", "Naruto"), ("Choji Akimichi", "Naruto"), ("Ino Yamanaka", "Naruto"), ("Temari", "Naruto"), ("Kankuro", "Naruto"),
+    ("Mei Terumi", "Naruto"), ("A (Fourth Raikage)", "Naruto"), ("Onoki", "Naruto"), ("Darui", "Naruto"), ("Killer Bee", "Naruto"),
+    ("Kushina Uzumaki", "Naruto"), ("Shisui Uchiha", "Naruto"), ("Indra Otsutsuki", "Naruto"), ("Asura Otsutsuki", "Naruto"), ("Kaguya Otsutsuki", "Naruto"),
 
-    # One Piece (100)
-    "Monkey D. Luffy", "Roronoa Zoro", "Nami", "Usopp", "Sanji",
-    "Tony Tony Chopper", "Nico Robin", "Franky", "Brook", "Jinbe",
-    "Portgas D. Ace", "Sabo", "Shanks", "Marshall D. Teach (Blackbeard)", "Edward Newgate (Whitebeard)",
-    "Kaido", "Charlotte Linlin (Big Mom)", "Gol D. Roger", "Silvers Rayleigh", "Kozuki Oden",
-    "Trafalgar D. Water Law", "Eustass Kid", "Killer", "Bepo", "Jewelry Bonney",
-    "Capone Bege", "Basil Hawkins", "X Drake", "Scratchmen Apoo", "Urouge",
-    "Dracule Mihawk", "Boa Hancock", "Donquixote Doflamingo", "Crocodile", "Bartholomew Kuma",
-    "Gecko Moria", "Buggy the Clown", "Smoker", "Tashigi", "Koby",
-    "Helmeppo", "Monkey D. Garp", "Monkey D. Dragon", "Sengoku", "Sakazuki (Akainu)",
-    "Kuzan (Aokiji)", "Borsalino (Kizaru)", "Issho (Fujitora)", "Aramaki (Ryokugyu)", "Rob Lucci",
-    "Kaku", "Kalifa", "Spandam", "Enel", "Vivi Nefertari",
-    "Karoo", "Sir Crocodile", "Mr. 2 Bon Clay", "Mr. 3 Galdino", "Ivankov",
-    "Inazuma", "Magellan", "Hannyabal", "Shiryu", "Marco the Phoenix",
-    "Jozu", "Vista", "Izo", "Yamato", "Momonosuke",
-    "Kin'emon", "Kanjuro", "Raizo", "Kikunojo", "Ashura Doji",
-    "Denjiro", "Kawamatsu", "Inuarashi", "Nekomamushi", "Carrot",
-    "Pedro", "Charlotte Katakuri", "Charlotte Perospero", "Charlotte Smoothie", "Charlotte Cracker",
-    "Charlotte Pudding", "Vinsmoke Judge", "Vinsmoke Reiju", "Vinsmoke Ichiji", "Vinsmoke Niji",
-    "Vinsmoke Yonji", "Caesar Clown", "Vergo", "Monet", "Sugar",
-    "Senor Pink", "Bartolomeo", "Cavendish", "Rebecca", "Kyros",
+    # ── ONE PIECE (50+ Characters) ───────────────────────
+    ("Monkey D. Luffy", "One Piece"), ("Roronoa Zoro", "One Piece"), ("Nami", "One Piece"), ("Usopp", "One Piece"), ("Sanji", "One Piece"),
+    ("Tony Tony Chopper", "One Piece"), ("Nico Robin", "One Piece"), ("Franky", "One Piece"), ("Brook", "One Piece"), ("Jinbe", "One Piece"),
+    ("Trafalgar Law", "One Piece"), ("Portgas D. Ace", "One Piece"), ("Shanks", "One Piece"), ("Donquixote Doflamingo", "One Piece"), ("Kaido", "One Piece"),
+    ("Big Mom / Charlotte Linlin", "One Piece"), ("Whitebeard / Edward Newgate", "One Piece"), ("Gol D. Roger", "One Piece"), ("Blackbeard / Marshall D. Teach", "One Piece"), ("Dracule Mihawk", "One Piece"),
+    ("Sabo", "One Piece"), ("Vinsmoke Sanji", "One Piece"), ("Boa Hancock", "One Piece"), ("Crocodile", "One Piece"), ("Enel", "One Piece"),
+    ("Rob Lucci", "One Piece"), ("Katakuri Charlotte", "One Piece"), ("Yamato", "One Piece"), ("Oden Kozuki", "One Piece"), ("Marco the Phoenix", "One Piece"),
+    ("Silvers Rayleigh", "One Piece"), ("Bartholomew Kuma", "One Piece"), ("Emporio Ivankov", "One Piece"), ("Donquixote Rosinante / Corazon", "One Piece"), ("Smoker", "One Piece"),
+    ("Tashigi", "One Piece"), ("Fujitora / Issho", "One Piece"), ("Kizaru / Borsalino", "One Piece"), ("Akainu / Sakazuki", "One Piece"), ("Aokiji / Kuzan", "One Piece"),
+    ("Monkey D. Garp", "One Piece"), ("Sengoku", "One Piece"), ("Koby", "One Piece"), ("Helmeppo", "One Piece"), ("Buggy the Star Clown", "One Piece"),
+    ("Arlong", "One Piece"), ("Hody Jones", "One Piece"), ("Caesar Clown", "One Piece"), ("Ceasar Clown", "One Piece"), ("Gecko Moria", "One Piece"),
 
-    # Bleach (70)
-    "Ichigo Kurosaki", "Rukia Kuchiki", "Orihime Inoue", "Uryu Ishida", "Yasutora Sado (Chad)",
-    "Renji Abarai", "Byakuya Kuchiki", "Toshiro Hitsugaya", "Kenpachi Zaraki", "Yachiru Kusajishi",
-    "Sosuke Aizen", "Gin Ichimaru", "Kaname Tosen", "Kisuke Urahara", "Yoruichi Shihoin",
-    "Shunsui Kyoraku", "Jushiro Ukitake", "Genryusai Shigekuni Yamamoto", "Retsu Unohana", "Soi Fon",
-    "Mayuri Kurotsuchi", "Nemu Kurotsuchi", "Sajin Komamura", "Izuru Kira", "Shuhei Hisagi",
-    "Rangiku Matsumoto", "Ikkaku Madarame", "Yumichika Ayasegawa", "Momo Hinamori", "Nanao Ise",
-    "Shinji Hirako", "Hiyori Sarugaki", "Kensei Muguruma", "Rojuro Otoribashi", "Love Aikawa",
-    "Mashiro Kuna", "Hachigen Ushoda", "Lisa Yadomaru", "Ulquiorra Cifer", "Grimmjow Jaegerjaquez",
-    "Coyote Starrk", "Baraggan Louisenbairn", "Tier Harribel", "Nnoitra Gilga", "Szayelaporro Granz",
-    "Zommari Rureaux", "Aaroniero Arruruerie", "Yammy Llargo", "Nelliel Tu Odelschwanck", "Luppi Antenor",
-    "Yhwach", "Jugram Haschwalth", "Uryu Ishida", "Bazz-B", "Askin Nakk Le Vaar",
-    "Bambietta Basterbine", "Gremmy Thoumeaux", "Lille Barro", "Gerard Valkyrie", "Pernida Parnkgjas",
-    "As Nodt", "Giselle Gewelle", "Candice Catnipp", "Meninas McAllon", "Liltotto Lamperd",
-    "Isshin Kurosaki", "Masaki Kurosaki", "Karin Kurosaki", "Yuzu Kurosaki", "Kon",
+    # ── BLEACH (50+ Characters) ──────────────────────────
+    ("Ichigo Kurosaki", "Bleach"), ("Rukia Kuchiki", "Bleach"), ("Orihime Inoue", "Bleach"), ("Uryu Ishida", "Bleach"), ("Renji Abarai", "Bleach"),
+    ("Byakuya Kuchiki", "Bleach"), ("Toshiro Hitsugaya", "Bleach"), ("Kenpachi Zaraki", "Bleach"), ("Sosuke Aizen", "Bleach"), ("Kisuke Urahara", "Bleach"),
+    ("Yoruichi Shihouin", "Bleach"), ("Shunsui Kyoraku", "Bleach"), ("Jushiro Ukitake", "Bleach"), ("Gin Ichimaru", "Bleach"), ("Kaname Tosen", "Bleach"),
+    ("Mayuri Kurotsuchi", "Bleach"), ("Sajin Komamura", "Bleach"), ("Retsu Unohana", "Bleach"), ("Soi Fon", "Bleach"), ("Yamamoto Genryusai", "Bleach"),
+    ("Shinji Hirako", "Bleach"), ("Kensei Muguruma", "Bleach"), ("Love Aikawa", "Bleach"), ("Rose Otoribashi", "Bleach"), ("Mashiro Kuna", "Bleach"),
+    ("Hiyori Sarugaki", "Bleach"), ("Lisa Yadomaru", "Bleach"), ("Hachigen Ushoda", "Bleach"), ("Yasutora Sado / Chad", "Bleach"), ("Kon", "Bleach"),
+    ("Tatsuki Miyazawa", "Bleach"), ("Keigo Asano", "Bleach"), ("Mizuiro Kojima", "Bleach"), ("Don Kanonji", "Bleach"), ("Zangetsu", "Bleach"),
+    ("Grimmjeow Jaegerjaquez", "Bleach"), ("Ulquiorra Cifer", "Bleach"), ("Nnoitora Gilga", "Bleach"), ("Neliel Tu Odelschwanck", "Bleatch"), ("Tier Harribel", "Bleach"),
+    ("Starrk Coyote", "Bleach"), ("Baraggan Louisenbairn", "Bleach"), ("Yhwach", "Bleach"), ("Uryu's Father / Ryuken Ishida", "Bleach"), ("Isshin Kurosaki", "Bleach"),
+    ("Masaki Kurosaki", "Bleatch"), ("Senjumaru Shutara", "Bleach"), ("Kirio Hikifune", "Bleach"), ("Oetsu Nimaiya", "Bleach"), ("Ichibe Hyosube", "Bleach"),
 
-    # Dragon Ball (60)
-    "Son Goku", "Vegeta", "Son Gohan", "Piccolo", "Future Trunks",
-    "Krillin", "Bulma", "Chi-Chi", "Master Roshi", "Yamcha",
-    "Tien Shinhan", "Chiaotzu", "Android 18", "Android 17", "Android 16",
-    "Cell", "Frieza", "Majin Buu", "Kid Buu", "Super Buu",
-    "Mr. Satan (Hercule)", "Videl", "Goten", "Trunks", "Gotenks",
-    "Vegito", "Gogeta", "Beerus", "Whis", "Champa",
-    "Vados", "Zeno", "Grand Priest", "Jiren", "Toppo",
-    "Dyspo", "Hit", "Cabba", "Caulifla", "Kale",
-    "Kefla", "Goku Black", "Zamasu", "Fused Zamasu", "Broly",
-    "Paragus", "Bardock", "Gine", "Raditz", "Nappa",
-    "Captain Ginyu", "Recoome", "Burter", "Jeice", "Guldo",
-    "Dabura", "Babidi", "Supreme Kai (Shin)", "Kibito", "Pan",
+    # ── DRAGON BALL (50+ Characters) ─────────────────────
+    ("Son Goku", "Dragon Ball"), ("Vegeta", "Dragon Ball"), ("Son Gohan", "Dragon Ball"), ("Piccolo", "Dragon Ball"), ("Future Trunks", "Dragon Ball"),
+    ("Krillin", "Dragon Ball"), ("Bulma", "Dragon Ball"), ("Master Roshi", "Dragon Ball"), ("Android 18", "Dragon Ball"), ("Frieza", "Dragon Ball"),
+    ("Beerus", "Dragon Ball"), ("Whis", "Dragon Ball"), ("Goku Black", "Dragon Ball"), ("Broly", "Dragon Ball"), ("Jiren", "Dragon Ball"),
+    ("Cell", "Dragon Ball"), ("Majin Buu", "Dragon Ball"), ("Raditz", "Dragon Ball"), ("Nappa", "Dragon Ball"), ("Chi-Chi", "Dragon Ball"),
+    ("Videl", "Dragon Ball"), ("Yamcha", "Dragon Ball"), ("Tien Shinhan", "Dragon Ball"), ("Chiaotzu", "Dragon Ball"), ("Android 17", "Dragon Ball"),
+    ("Android 16", "Dragon Ball"), ("Zamasu", "Dragon Ball"), ("Gogeta", "Dragon Ball"), ("Vegito", "Dragon Ball"), ("Goten", "Dragon Ball"),
+    ("Trunks (Kid)", "Dragon Ball"), ("Pan", "Dragon Ball"), ("Bardock", "Dragon Ball"), ("King Vegeta", "Dragon Ball"), ("King Kai", "Dragon Ball"),
+    ("Grand Kai", "Dragon Ball"), ("Grand Priest", "Dragon Ball"), ("Zeno", "Dragon Ball"), ("Toppo", "Dragon Ball"), ("Dyspo", "Dragon Ball"),
+    ("Hit", "Dragon Ball"), ("Cabba", "Dragon Ball"), ("Caulifla", "Dragon Ball"), ("Kale", "Dragon Ball"), ("Kefla", "Dragon Ball"),
+    ("Dende", "Dragon Ball"), ("Mr. Satan / Hercule", "Dragon Ball"), ("Oolong", "Dragon Ball"), ("Puar", "Dragon Ball"), ("Shenron", "Dragon Ball"),
 
-    # Jujutsu Kaisen (50)
-    "Yuji Itadori", "Megumi Fushiguro", "Nobara Kugisaki", "Satoru Gojo", "Ryomen Sukuna",
-    "Yuta Okkotsu", "Maki Zenin", "Toge Inumaki", "Panda", "Kento Nanami",
-    "Suguru Geto", "Kenjaku", "Mahito", "Jogo", "Hanami",
-    "Dagon", "Choso", "Eso", "Kechizu", "Toji Fushiguro",
-    "Mei Mei", "Ui Ui", "Aoi Todo", "Mai Zenin", "Kasumi Miwa",
-    "Kokichi Muta (Mechamaru)", "Noritoshi Kamo", "Momo Nishimiya", "Utahime Iori", "Masamichi Yaga",
-    "Shoko Ieiri", "Yoshinobu Gakuganji", "Naobito Zenin", "Naoya Zenin", "Jinichi Zenin",
-    "Ogi Zenin", "Rika Orimoto", "Kinji Hakari", "Kirara Hoshi", "Hiromi Higuruma",
-    "Hajime Kashimo", "Ryu Ishigori", "Takako Uro", "Hana Kurusu", "Angel",
-    "Uraume", "Tengen", "Yuki Tsukumo", "Takuma Ino", "Atsuya Kusakabe",
+    # ── JUJUTSU KAISEN (50+ Characters) ──────────────────
+    ("Yuji Itadori", "Jujutsu Kaisen"), ("Megumi Fushiguro", "Jujutsu Kaisen"), ("Nobara Kugisaki", "Jujutsu Kaisen"), ("Satoru Gojo", "Jujutsu Kaisen"), ("Ryomen Sukuna", "Jujutsu Kaisen"),
+    ("Yuta Okkotsu", "Jujutsu Kaisen"), ("Maki Zenin", "Jujutsu Kaisen"), ("Toge Inumaki", "Jujutsu Kaisen"), ("Kento Nanami", "Jujutsu Kaisen"), ("Suguru Geto", "Jujutsu Kaisen"),
+    ("Toji Fushiguro", "Jujutsu Kaisen"), ("Choso", "Jujutsu Kaisen"), ("Mahito", "Jujutsu Kaisen"), ("Kenjaku", "Jujutsu Kaisen"), ("Hajime Kashimo", "Jujutsu Kaisen"),
+    ("Panda", "Jujutsu Kaisen"), ("Aoi Todo", "Jujutsu Kaisen"), ("Kasumi Miwa", "Jujutsu Kaisen"), ("Kokichi Muta / Mechamaru", "Jujutsu Kaisen"), ("Noritoshi Kamo", "Jujutsu Kaisen"),
+    ("Momo Nishimiya", "Jujutsu Kaisen"), ("Mai Zenin", "Jujutsu Kaisen"), ("Megumi's Sister / Tsumiki Fushiguro", "Jujutsu Kaisen"), ("Shoko Ieiri", "Jujutsu Kaisen"), ("Masamichi Yaga", "Jujutsu Kaisen"),
+    ("Kiyotaka Ijichi", "Jujutsu Kaisen"), ("Akutami Gege / Narrator", "Jujutsu Kaisen"), ("Kinji Hakari", "Jujutsu Kaisen"), ("Kirara Hoshi", "Jujutsu Kaisen"), ("Takaba Fumihiko", "Jujutsu Kaisen"),
+    ("Angel / Hana Kurusu", "Jujutsu Kaisen"), ("Uraume", "Jujutsu Kaisen"), ("Jogo", "Jujutsu Kaisen"), ("Hanami", "Jujutsu Kaisen"), ("Dagon", "Jujutsu Kaisen"),
+    ("Jogo", "Jujutsu Kaisen"), ("Naobito Zenin", "Jujutsu Kaisen"), ("Naoya Zenin", "Jujutsu Kaisen"), ("Ogi Zenin", "Jujutsu Kaisen"), ("Jin Itadori", "Jujutsu Kaisen"),
+    ("Wasuke Itadori", "Jujutsu Kaisen"), ("Rika Orimoto", "Jujutsu Kaisen"), ("Ino Takuma", "Jujutsu Kaisen"), ("Yaga Masamichi", "Jujutsu Kaisen"), ("Gakuganji", "Jujutsu Kaisen"),
+    ("Mei Mei", "Jujutsu Kaisen"), ("Ui Ui", "Jujutsu Kaisen"), ("Yuki Tsukumo", "Jujutsu Kaisen"), ("Garou / Cursed Spirits", "Jujutsu Kaisen"), ("Reggie Star", "Jujutsu Kaisen"),
 
-    # Demon Slayer (50)
-    "Tanjiro Kamado", "Nezuko Kamado", "Zenitsu Agatsuma", "Inosuke Hashibira", "Giyu Tomioka",
-    "Shinobu Kocho", "Kyojuro Rengoku", "Tengen Uzui", "Mitsuri Kanroji", "Muichiro Tokito",
-    "Gyomei Himejima", "Obanai Iguro", "Sanemi Shinazugawa", "Kanao Tsuyuri", "Genya Shinazugawa",
-    "Kagaya Ubuyashiki", "Amane Ubuyashiki", "Sakonji Urokodaki", "Jigoro Kuwajima", "Hotaru Haganezuka",
-    "Aoi Kanzaki", "Sabito", "Makomo", "Yoriichi Tsugikuni", "Muzan Kibutsuji",
-    "Kokushibo", "Doma", "Akaza", "Hantengu", "Gyokko",
-    "Gyutaro", "Daki", "Kaigaku", "Nakime", "Enmu",
-    "Rui", "Susamaru", "Yahaba", "Kyogai", "Tamayo",
-    "Yushiro", "Murata", "Suma", "Makio", "Hinatsuru",
-    "Senjuro Rengoku", "Shinjuro Rengoku", "Kanae Kocho", "Goto", "Chuntaro",
+    # ── DEMON SLAYER (50+ Characters) ────────────────────
+    ("Tanjiro Kamado", "Demon Slayer"), ("Nezuko Kamado", "Demon Slayer"), ("Zenitsu Agatsuma", "Demon Slayer"), ("Inosuke Hashibira", "Demon Slayer"), ("Giyu Tomioka", "Demon Slayer"),
+    ("Shinobu Kocho", "Demon Slayer"), ("Kyojuro Rengoku", "Demon Slayer"), ("Tengen Uzui", "Demon Slayer"), ("Mitsuri Kanroji", "Demon Slayer"), ("Muichiro Tokito", "Demon Slayer"),
+    ("Sanemi Shinazugawa", "Demon Slayer"), ("Obanai Iguro", "Demon Slayer"), ("Gyomei Himejima", "Demon Slayer"), ("Kanao Tsuyuri", "Demon Slayer"), ("Genya Shinazugawa", "Demon Slayer"),
+    ("Muzan Kibutsuji", "Demon Slayer"), ("Kokushibo", "Demon Slayer"), ("Doma", "Demon Slayer"), ("Akaza", "Demon Slayer"), ("Hantengu", "Demon Slayer"),
+    ("Gyokko", "Demon Slayer"), ("Daki", "Demon Slayer"), ("Gyutaro", "Demon Slayer"), ("Enmu", "Demon Slayer"), ("Rui", "Demon Slayer"),
+    ("Yoriichi Tsugikuni", "Demon Slayer"), ("Michikatsu Tsugikuni", "Demon Slayer"), ("Kagaya Ubuyashiki", "Demon Slayer"), ("Amane Ubuyashiki", "Demon Slayer"), ("Senjuro Rengoku", "Demon Slayer"),
+    ("Shinjuro Rengoku", "Demon Slayer"), ("Sakonji Urokodaki", "Demon Slayer"), ("Sabito", "Demon Slayer"), ("Makomo", "Demon Slayer"), ("Tamayo", "Demon Slayer"),
+    ("Yushiro", "Demon Slayer"), ("Murata", "Demon Slayer"), ("Aoi Kanzaki", "Demon Slayer"), ("Sumi Nakahara", "Demon Slayer"), ("Kiyo Terauchi", "Demon Slayer"),
+    ("Naho Takada", "Demon Slayer"), ("Yushiro", "Demon Slayer"), ("Kibutsuji Muzan", "Demon Slayer"), ("Nakime", "Demon Slayer"), ("Kaigaku", "Demon Slayer"),
+    ("Susamaru", "Demon Slayer"), ("Yahaba", "Demon Slayer"), ("Spider Demon Mother", "Demon Slayer"), ("Spider Demon Father", "Demon Slayer"), ("Spider Demon Older Brother", "Demon Slayer"),
 
-    # Attack on Titan (50)
-    "Eren Yeager", "Mikasa Ackerman", "Armin Arlert", "Levi Ackerman", "Erwin Smith",
-    "Hange Zoe", "Jean Kirstein", "Connie Springer", "Sasha Blouse", "Historia Reiss",
-    "Ymir", "Reiner Braun", "Bertholdt Hoover", "Annie Leonhart", "Zeke Yeager",
-    "Pieck Finger", "Porco Galliard", "Marcel Galliard", "Falco Grice", "Gabi Braun",
-    "Colt Grice", "Udo", "Zofia", "Theo Magath", "Willy Tybur",
-    "Lara Tybur", "Grisha Yeager", "Carla Yeager", "Dina Fritz", "Eren Kruger",
-    "Kenny Ackerman", "Uri Reiss", "Rod Reiss", "Frieda Reiss", "Floch Forster",
-    "Hitch Dreyse", "Marlowe Freudenberg", "Petra Ral", "Oluo Bozado", "Eld Jinn",
-    "Gunther Schultz", "Mike Zacharias", "Nanaba", "Gelgar", "Moblit Berner",
-    "Keith Shadis", "Dot Pixis", "Nile Dok", "Darius Zackly", "Ymir Fritz",
+    # ── ATTACK ON TITAN (50+ Characters) ─────────────────
+    ("Eren Yeager", "Attack on Titan"), ("Mikasa Ackerman", "Attack on Titan"), ("Armin Arlert", "Attack on Titan"), ("Levi Ackerman", "Attack on Titan"), ("Erwin Smith", "Attack on Titan"),
+    ("Hange Zoe", "Attack on Titan"), ("Jean Kirstein", "Attack on Titan"), ("Connie Springer", "Attack on Titan"), ("Sasha Blouse", "Attack on Titan"), ("Historia Reiss", "Attack on Titan"),
+    ("Reiner Braun", "Attack on Titan"), ("Bertholdt Hoover", "Attack on Titan"), ("Annie Leonhart", "Attack on Titan"), ("Zeke Yeager", "Attack on Titan"), ("Pieck Finger", "Attack on Titan"),
+    ("Porco Galliard", "Attack on Titan"), ("Gabi Braun", "Attack on Titan"), ("Falco Grice", "Attack on Titan"), ("Yelena", "Attack on Titan"), ("Onyankopon", "Attack on Titan"),
+    ("Floch Forster", "Attack on Titan"), ("Grisha Yeager", "Attack on Titan"), ("Carla Yeager", "Attack on Titan"), ("Dina Fritz", "Attack on Titan"), ("Kenny Ackerman", "Attack on Titan"),
+    ("Ymir Fritz", "Attack on Titan"), ("Kitz Woermann", "Attack on Titan"), ("Hannes", "Attack on Titan"), ("Ian Dietrich", "Attack on Titan"), ("Rico Brzenska", "Attack on Titan"),
+    ("Marco Bott", "Attack on Titan"), ("Daz", "Attack on Titan"), ("Samuel", "Attack on Titan"), ("Moblit Berner", "Attack on Titan"), ("Nile Dawk", "Attack on Titan"),
+    ("Zackly", "Attack on Titan"), ("Pyxis", "Attack on Titan"), ("Rod Reiss", "Attack on Titan"), ("Frieda Reiss", "Attack on Titan"), ("Uri Reiss", "Attack on Titan"),
+    ("Faye Yeager", "Attack on Titan"), ("Mr. Leonhart", "Attack on Titan"), ("Mr. Braun", "Attack on Titan"), ("Mrs. Braun", "Attack on Titan"), ("Kruger / Owl", "Attack on Titan"),
+    ("Tom Ksaver", "Attack on Titan"), ("Helos", "Attack on Titan"), ("Willy Tybur", "Attack on Titan"), ("Lara Tybur", "Attack on Titan"), ("Kiyomi Azumabito", "Attack on Titan"),
 
-    # My Hero Academia (60)
-    "Izuku Midoriya", "Katsuki Bakugo", "Shoto Todoroki", "Ochaco Uraraka", "Tenya Iida",
-    "All Might", "Shota Aizawa (Eraser Head)", "Eijiro Kirishima", "Momo Yaoyorozu", "Denki Kaminari",
-    "Tsuyu Asui", "Fumikage Tokoyami", "Kyoka Jiro", "Mina Ashido", "Hanta Sero",
-    "Mashirao Ojiro", "Toru Hagakure", "Mezo Shoji", "Koji Koda", "Rikido Sato",
-    "Yuga Aoyama", "Minoru Mineta", "Mirio Togata", "Nejire Hado", "Tamaki Amajiki",
-    "Hitoshi Shinso", "Mei Hatsume", "Endeavor", "Hawks", "Best Jeanist",
-    "Edgeshot", "Mirko", "Crust", "Kamui Woods", "Mt. Lady",
-    "Gran Torino", "Sir Nighteye", "Fat Gum", "Gang Orca", "Present Mic",
-    "Midnight", "Cementoss", "Ectoplasm", "Recovery Girl", "Principal Nezu",
-    "Tomura Shigaraki", "All For One", "Dabi", "Himiko Toga", "Twice",
-    "Spinner", "Mr. Compress", "Kurogiri", "Gigantomachia", "Overhaul",
-    "Eri", "Stain", "Gentle Criminal", "La Brava", "Lady Nagant",
+    # ── MY HERO ACADEMIA (50+ Characters) ────────────────
+    ("Izuku Midoriya", "My Hero Academia"), ("Katsuki Bakugo", "My Hero Academia"), ("Shoto Todoroki", "My Hero Academia"), ("Ochaco Uraraka", "My Hero Academia"), ("Tenya Iida", "My Hero Academia"),
+    ("All Might", "My Hero Academia"), ("Shota Aizawa", "My Hero Academia"), ("Eijiro Kirishima", "My Hero Academia"), ("Momo Yaoyorozu", "My Hero Academia"), ("Denki Kaminari", "My Hero Academia"),
+    ("Kyoka Jiro", "My Hero Academia"), ("Fumikage Tokoyami", "My Hero Academia"), ("Tsuyu Asui", "My Hero Academia"), ("Minoru Mineta", "My Hero Academia"), ("Mina Ashido", "My Hero Academia"),
+    ("Hanta Sero", "My Hero Academia"), ("Yuga Aoyama", "My Hero Academia"), ("Toru Hagakure", "My Hero Academia"), ("Mezo Shoji", "My Hero Academia"), ("Mashirao Ojiro", "My Hero Academia"),
+    ("Koji Koda", "My Hero Academia"), ("Rikido Sato", "My Hero Academia"), ("Ejirou Kirishima", "My Hero Academia"), ("Hitoshi Shinso", "My Hero Academia"), ("Neito Monoma", "My Hero Academia"),
+    ("Itsuka Kendo", "My Hero Academia"), ("Ibara Shiozaki", "My Hero Academia"), ("Tetsutetsu Tetsutetsu", "My Hero Academia"), ("Mirio Togata", "My Hero Academia"), ("Nejire Hado", "My Hero Academia"),
+    ("Tamaki Amajiki", "My Hero Academia"), ("Hawks / Keigo Takami", "My Hero Academia"), ("Endeavor / Enji Todoroki", "My Hero Academia"), ("Best Jeanist", "My Hero Academia"), ("Edgeshot", "My Hero Academia"),
+    ("Mirko / Rumi Usagiyama", "My Hero Academia"), ("Gran Torino", "My Hero Academia"), ("Tomura Shigaraki", "My Hero Academia"), ("Dabi / Toya Todoroki", "My Hero Academia"), ("Himiko Toga", "My Hero Academia"),
+    ("Spinner", "My Hero Academia"), ("Compress", "My Hero Academia"), ("Twice / Jin Bubaigawara", "My Hero Academia"), ("Gigantomachia", "My Hero Academia"), ("All For One", "My Hero Academia"),
+    ("Overhaul / Chisaki", "My Hero Academia"), ("Stain / Chizuru Akaguro", "My Hero Academia"), ("Gentle Criminal", "My Hero Academia"), ("La Brava", "My Hero Academia"), ("Eri", "My Hero Academia"),
 
-    # Hunter x Hunter (40)
-    "Gon Freecss", "Killua Zoldyck", "Kurapika", "Leorio Paradinight", "Hisoka Morow",
-    "Illumi Zoldyck", "Chrollo Lucilfer", "Isaac Netero", "Meruem", "Neferpitou",
-    "Shaiapouf", "Menthuthuyoupi", "Komugi", "Biscuit Krueger", "Kite",
-    "Knuckle Bine", "Shoot McMahon", "Morel Mackernasey", "Knov", "Palm Siberia",
-    "Feitan Portor", "Phinks Magcub", "Shalnark", "Machi Komacine", "Nobunaga Hazama",
-    "Uvogin", "Pakunoda", "Franklin Bordeau", "Shizuku Murasaki", "Bonolenov Ndongo",
-    "Kortopi", "Silva Zoldyck", "Zeno Zoldyck", "Kikyo Zoldyck", "Milluki Zoldyck",
-    "Alluka Zoldyck", "Kalluto Zoldyck", "Ging Freecss", "Pariston Hill", "Razor",
+    # ── HUNTER X HUNTER (50+ Characters) ─────────────────
+    ("Gon Freecss", "Hunter x Hunter"), ("Killua Zoldyck", "Hunter x Hunter"), ("Kurapika", "Hunter x Hunter"), ("Leorio Paradinight", "Hunter x Hunter"), ("Hisoka Morow", "Hunter x Hunter"),
+    ("Chrollo Lucilfer", "Hunter x Hunter"), ("Meruem", "Hunter x Hunter"), ("Neferpitou", "Hunter x Hunter"), ("Menthuthuyoupi", "Hunter x Hunter"), ("Shaiapouf", "Hunter x Hunter"),
+    ("Isaac Netero", "Hunter x Hunter"), ("Ging Freecss", "Hunter x Hunter"), ("Kite", "Hunter x Hunter"), ("Illumi Zoldyck", "Hunter x Hunter"), ("Zeno Zoldyck", "Hunter x Hunter"),
+    ("Silva Zoldyck", "Hunter x Hunter"), ("Kikyo Zoldyck", "Hunter x Hunter"), ("Milluki Zoldyck", "Hunter x Hunter"), ("Alluka Zoldyck", "Hunter x Hunter"), ("Kalluto Zoldyck", "Hunter x Hunter"),
+    ("Biscuit Krueger / Bisky", "Hunter x Hunter"), ("Morel Mackernasey", "Hunter x Hunter"), ("Knov", "Hunter x Hunter"), ("Knuckle Bine", "Hunter x Hunter"), ("Shoot McMahon", "Hunter x Hunter"),
+    ("Palm Siberia", "Hunter x Hunter"), ("Ikalgo", "Hunter x Hunter"), ("Meleoron", "Hunter x Hunter"), ("Komugi", "Hunter x Hunter"), ("Phinks Magcub", "Hunter x Hunter"),
+    ("Feitan Portor", "Hunter x Hunter"), ("Machi Komacine", "Hunter x Hunter"), ("Nobunaga Hazama", "Hunter x Hunter"), ("Shalnark", "Hunter x Hunter"), ("Franklin Bordeau", "Hunter x Hunter"),
+    ("Bonolenov Ndongo", "Hunter x Hunter"), ("Uvogin", "Hunter x Hunter"), ("Pakunoda", "Hunter x Hunter"), ("Genthru", "Hunter x Hunter"), ("Razor", "Hunter x Hunter"),
+    ("Tonpa", "Hunter x Hunter"), ("Hanzo", "Hunter x Hunter"), ("Pokkle", "Hunter x Hunter"), ("Bourbon", "Hunter x Hunter"), ("Menchi", "Hunter x Hunter"),
+    ("Buhara", "Hunter x Hunter"), ("Satotz", "Hunter x Hunter"), ("Tenth Zodiacs / Pariston Hill", "Hunter x Hunter"), ("Cheadle Yorkshire", "Hunter x Hunter"), ("Beyond Netero", "Hunter x Hunter"),
 
-    # Fullmetal Alchemist (35)
-    "Edward Elric", "Alphonse Elric", "Winry Rockbell", "Roy Mustang", "Riza Hawkeye",
-    "Maes Hughes", "Alex Louis Armstrong", "Olivier Mira Armstrong", "Scar", "Izumi Curtis",
-    "Sig Curtis", "Van Hohenheim", "Trisha Elric", "Pinako Rockbell", "Ling Yao",
-    "Lan Fan", "Fu", "May Chang", "Shao May", "King Bradley (Wrath)",
-    "Selim Bradley (Pride)", "Lust", "Gluttony", "Envy", "Greed",
-    "Sloth", "Father", "Solf J. Kimblee", "Jean Havoc", "Heymans Breda",
-    "Vato Falman", "Kain Fuery", "Maria Ross", "Denny Brosh", "Barry the Chopper",
+    # ── OTHER ANIME (20+ Characters Each) ────────────────
+    # Chainsaw Man
+    ("Denji", "Chainsaw Man"), ("Aki Hayakawa", "Chainsaw Man"), ("Power", "Chainsaw Man"), ("Makima", "Chainsaw Man"), ("Himeno", "Chainsaw Man"),
+    ("Kobeni Higashiyama", "Chainsaw Man"), ("Hirofumi Yoshida", "Chainsaw Man"), ("Kishibe", "Chainsaw Man"), ("Reze", "Chainsaw Man"), ("Quanxi", "Chainsaw Man"),
+    ("Beam", "Chainsaw Man"), ("Violence Fiend", "Chainsaw Man"), ("Angel Devil", "Chainsaw Man"), ("Control Devil", "Chainsaw Man"), ("War Devil / Asa Mitaka", "Chainsaw Man"),
+    ("Yuko", "Chainsaw Man"), ("Darkness Devil", "Chainsaw Man"), ("Gun Devil", "Chainsaw Man"), ("Eternity Devil", "Chainsaw Man"), ("Bat Devil", "Chainsaw Man"),
+    
+    # Tokyo Ghoul
+    ("Ken Kaneki", "Tokyo Ghoul"), ("Touka Kirishima", "Tokyo Ghoul"), ("Rize Kamishiro", "Tokyo Ghoul"), ("Shuu Tsukiyama", "Tokyo Ghoul"), ("Koutarou Amon", "Tokyo Ghoul"),
+    ("Juuzou Suzuya", "Tokyo Ghoul"), ("Kishou Arima", "Tokyo Ghoul"), ("Yoshimura", "Tokyo Ghoul"), ("Renji Yomo", "Tokyo Ghoul"), ("Hinami Fueguchi", "Tokyo Ghoul"),
+    ("Uta", "Tokyo Ghoul"), ("Itori", "Tokyo Ghoul"), ("Nishiki Nishio", "Tokyo Ghoul"), ("Ayato Kirishima", "Tokyo Ghoul"), ("Eto Yoshimura", "Tokyo Ghoul"),
+    ("Tatara", "Tokyo Ghoul"), ("Seidou Takizawa", "Tokyo Ghoul"), ("Haise Sasaki", "Tokyo Ghoul"), ("Noro", "Tokyo Ghoul"), ("Yamori / Jason", "Tokyo Ghoul"),
 
-    # Death Note & Code Geass (35)
-    "Light Yagami", "L Lawliet", "Misa Amane", "Ryuk", "Rem",
-    "Near", "Mello", "Soichiro Yagami", "Touta Matsuda", "Shuichi Aizawa",
-    "Kanzo Mogi", "Hideki Ide", "Watari", "Teru Mikami", "Kiyomi Takada",
-    "Naomi Misora", "Raye Penber", "Lelouch vi Britannia", "C.C.", "Suzaku Kururugi",
-    "Kallen Stadtfeld", "Nunnally vi Britannia", "Shirley Fenette", "Milly Ashford", "Rivalz Cardemonde",
-    "Nina Einstein", "Rolo Lamperouge", "Jeremiah Gottwald", "Cornelia li Britannia", "Euphemia li Britannia",
-    "Schneizel el Britannia", "Charles zi Britannia", "V.V.", "Marianne vi Britannia", "Diethard Ried",
+    # Death Note & Code Geass
+    ("Light Yagami", "Death Note"), ("L Lawliet", "Death Note"), ("Misa Amane", "Death Note"), ("Ryuk", "Death Note"), ("Rem", "Death Note"),
+    ("Near / Nate River", "Death Note"), ("Mello / Mihael Keehl", "Death Note"), ("Soichiro Yagami", "Death Note"), ("Teru Mikami", "Death Note"), ("Kiyomi Takada", "Death Note"),
+    ("Lelouch vi Britannia", "Code Geass"), ("C.C.", "Code Geass"), ("Suzaku Kururugi", "Code Geass"), ("Kallen Stadtfeld", "Code Geass"), ("Nunnally vi Britannia", "Code Geass"),
+    ("Shirley Fenette", "Code Geass"), ("Lloyd Asplund", "Code Geass"), ("Cornelia li Britannia", "Code Geass"), ("Zero", "Code Geass"), ("V.V.", "Code Geass"),
 
-    # Tokyo Ghoul & Chainsaw Man (45)
-    "Ken Kaneki", "Touka Kirishima", "Rize Kamishiro", "Hideyoshi Nagachika", "Juuzou Suzuya",
-    "Kishou Arima", "Kotaro Amon", "Akira Mado", "Kureo Mado", "Shuu Tsukiyama",
-    "Hinami Fueguchi", "Yoshimura", "Renji Yomo", "Uta", "Itori",
-    "Nishiki Nishio", "Eto Yoshimura", "Tatara", "Noro", "Ayato Kirishima",
-    "Yakumo Oomori (Jason)", "Nimura Furuta", "Haise Sasaki", "Kuki Urie", "Ginshi Shirazu",
-    "Tooru Mutsuki", "Saiko Yonebayashi", "Denji", "Pochita", "Makima",
-    "Aki Hayakawa", "Power", "Himeno", "Kobeni Higashiyama", "Hirokazu Arai",
-    "Kishibe", "Angel Devil", "Beam", "Galgali (Violence Fiend)", "Prinz",
-    "Quanxi", "Reze", "Santa Claus", "Katana Man", "Asa Mitaka",
-
-    # Black Clover & Fairy Tail (60)
-    "Asta", "Yuno Grinberryall", "Noelle Silva", "Yami Sukehiro", "Luck Voltia",
-    "Magna Swing", "Vanessa Enoteca", "Finral Roulacase", "Charmy Pappitson", "Gauche Adlai",
-    "Grey", "Gordon Agrippa", "Henry Legolant", "Zora Ideale", "Secre Swallowtail (Nero)",
-    "Julius Novachrono", "Fuegoleon Vermillion", "Mereoleona Vermillion", "Leopold Vermillion", "Nozel Silva",
-    "Solid Silva", "Nebra Silva", "Charlotte Roselei", "Jack the Ripper", "Rill Boismortier",
-    "William Vangeance", "Langris Vaude", "Mimosa Vermillion", "Klaus Lunettes", "Liebe",
-    "Natsu Dragneel", "Lucy Heartfilia", "Happy", "Gray Fullbuster", "Erza Scarlet",
-    "Wendy Marvell", "Carla", "Gajeel Redfox", "Pantherlily", "Juvia Lockser",
-    "Laxus Dreyar", "Mirajane Strauss", "Elfman Strauss", "Lisanna Strauss", "Makarov Dreyar",
-    "Gildarts Clive", "Cana Alberona", "Levy McGarden", "Freed Justine", "Evergreen",
-    "Bickslow", "Jellal Fernandes", "Ultear Milkovich", "Meredy", "Zeref Dragneel",
-    "Mavis Vermillion", "Acnologia", "Igneel", "Sting Eucliffe", "Rogue Cheney",
-
-    # Sword Art Online & Re:Zero (45)
-    "Kirito (Kazuto Kirigaya)", "Asuna Yuuki", "Leafa (Suguha Kirigaya)", "Sinon (Shino Asada)", "Klein",
-    "Agil", "Silica", "Lisbeth", "Yui", "Eugeo",
-    "Alice Zuberg", "Akihiko Kayaba", "Heathcliff", "Oberon", "Death Gun",
-    "Yuuki Konno", "Quinella (Administrator)", "Bercouli Synthesis One", "Subtlety", "Mito",
-    "Subaru Natsuki", "Emilia", "Rem", "Ram", "Beatrice",
-    "Roswaal L. Mathers", "Puck", "Felt", "Reinhard van Astrea", "Crusch Karsten",
-    "Felix Argyle", "Wilhelm van Astrea", "Anastasia Hoshin", "Julius Juukulius", "Priscilla Barielle",
-    "Aldebaran", "Echidna", "Satella", "Petelgeuse Romanee-Conti", "Regulus Corneas",
-    "Garfiel Tinsel", "Frederica Baumann", "Otto Suwen", "Petra Leyte", "Elsa Granhiert",
-
-    # JoJo's Bizarre Adventure (45)
-    "Jonathan Joestar", "Dio Brando", "Joseph Joestar", "Caesar Anthonio Zeppeli", "Lisa Lisa",
-    "Kars", "Esidisi", "Wamuu", "Rudol von Stroheim", "Jotaro Kujo",
-    "Noriaki Kakyoin", "Jean Pierre Polnareff", "Muhammad Avdol", "Iggy", "Hol Horse",
-    "Josuke Higashikata", "Okuyasu Nijimura", "Koichi Hirose", "Rohan Kishibe", "Yoshikage Kira",
-    "Reimi Sugimoto", "Giorno Giovanna", "Bruno Bucciarati", "Guido Mista", "Narancia Ghirga",
-    "Leone Abbacchio", "Pannacotta Fugo", "Trish Una", "Diavolo", "Vinegar Doppio",
-    "Jolyne Cujoh", "Ermes Costello", "Foo Fighters", "Weather Report", "Narciso Anasui",
-    "Emporio Alnino", "Enrico Pucci", "Johnny Joestar", "Gyro Zeppeli", "Diego Brando",
-    "Funny Valentine", "Josuke Higashikata (Gappy)", "Yasuho Hirose", "Tooru", "Speedwagon",
-
-    # One Punch Man & Mob Psycho 100 (35)
-    "Saitama", "Genos", "Tatsumaki (Terrible Tornado)", "Fubuki (Blizzard of Hell)", "King",
-    "Bang (Silver Fang)", "Bomb", "Atomic Samurai", "Child Emperor", "Metal Knight",
-    "Zombieman", "Drive Knight", "Pig God", "Superalloy Darkshine", "Watchdog Man",
-    "Flashy Flash", "Tanktop Master", "Metal Bat", "Puri-Puri Prisoner", "Mumen Rider",
-    "Speed-o'-Sound Sonic", "Garou", "Lord Boros", "Psyko", "Orochi",
-    "Shigeo Kageyama (Mob)", "Arataka Reigen", "Dimple", "Ritsu Kageyama", "Teruki Hanazawa",
-    "Tome Kurata", "Tsubomi Takane", "Sho Suzuki", "Toichiro Suzuki", "Katsuya Serizawa",
-
-    # Isekai Quartet: Konosuba, Overlord, Slime, Shield Hero (60)
-    "Kazuma Satou", "Aqua", "Megumin", "Darkness", "Wiz",
-    "Yunyun", "Vanir", "Chris", "Eris", "Chomusuke",
-    "Ainz Ooal Gown", "Albedo", "Shalltear Bloodfallen", "Demiurge", "Cocytus",
-    "Aura Bella Fiora", "Mare Bello Fiore", "Sebas Tian", "Pandora's Actor", "Narberal Gamma",
-    "Yuri Alpha", "Lupusregina Beta", "CZ2128 Delta", "Solution Epsilon", "Entoma Vasilissa Zeta",
-    "Gazef Stronoff", "Brain Unglaus", "Climb", "Renner", "Momon",
-    "Rimuru Tempest", "Veldora Tempest", "Shion", "Benimaru", "Shuna",
-    "Souei", "Hakurou", "Kurobe", "Gobta", "Ranga",
-    "Milim Nava", "Diablo", "Shizue Izawa", "Guy Crimson", "Leon Cromwell",
-    "Ramiris", "Luminous Valentine", "Hinatas Sakaguchi", "Gabiru", "Geld",
-    "Naofumi Iwatani", "Raphtalia", "Filo", "Melty Q. Melromarc", "Motoyasu Kitamura",
-    "Ren Amaki", "Itsuki Kawasumi", "Mirellia Q. Melromarc", "Glass", "Fitoria",
-
-    # Fate, Evangelion, Cowboy Bebop, Berserk, Vinland Saga (65)
-    "Saber (Artoria Pendragon)", "Shirou Emiya", "Rin Tohsaka", "Archer (EMIYA)", "Gilgamesh",
-    "Lancer (Cu Chulainn)", "Rider (Medusa)", "Caster (Medea)", "Berserker (Heracles)", "Illyasviel von Einzbern",
-    "Kirei Kotomine", "Kiritsugu Emiya", "Irisviel von Einzbern", "Iskandar", "Waver Velvet",
-    "Jeanne d'Arc", "Astolfo", "Mordred", "Karna", "Siegfried",
-    "Shinji Ikari", "Rei Ayanami", "Asuka Langley Soryu", "Misato Katsuragi", "Kaworu Nagisa",
-    "Gendo Ikari", "Ritsuko Akagi", "Mari Illustrious Makinami", "Toji Suzuhara", "Kensuke Aida",
-    "Spike Spiegel", "Jet Black", "Faye Valentine", "Edward Wong Hau Pepelu Tivrusky IV", "Ein",
-    "Vicious", "Julia", "Guts", "Griffith", "Casca",
-    "Puck (Berserk)", "Farnese", "Serpico", "Isidro", "Schierke",
-    "Skull Knight", "Zodd", "Judeau", "Pippin", "Corkus",
-    "Thorfinn", "Askeladd", "Thors", "Canute", "Thorkell",
-    "Bjorn", "Floki", "Einar", "Arnheid", "Ketil",
-    "Snake", "Leif Erikson", "Ylva", "Helga", "Gardar",
-
-    # Sports & Modern Hits: Haikyuu, Blue Lock, Spy x Family, Frieren, Solo Leveling (65)
-    "Shoyo Hinata", "Tobio Kageyama", "Daichi Sawamura", "Koshi Sugawara", "Asahi Azumane",
-    "Yu Nishinoya", "Ryunosuke Tanaka", "Kei Tsukishima", "Tadashi Yamaguchi", "Toru Oikawa",
-    "Hajime Iwaizumi", "Kenma Kozume", "Tetsuro Kuroo", "Kotaro Bokuto", "Keiji Akaashi",
-    "Wakatoshi Ushijima", "Satori Tendo", "Atsumu Miya", "Osamu Miya", "Shinsuke Kita",
-    "Yoichi Isagi", "Meguru Bachira", "Rensuke Kunigami", "Hyoma Chigiri", "Shoei Barou",
-    "Seishiro Nagi", "Reo Mikage", "Rin Itoshi", "Sae Itoshi", "Jinpachi Ego",
-    "Loid Forger (Twilight)", "Yor Forger (Thorn Princess)", "Anya Forger", "Bond Forger", "Yuri Briar",
-    "Damian Desmond", "Becky Blackbell", "Franky Franklin", "Sylvia Sherwood", "Henry Henderson",
-    "Frieren", "Fern", "Stark", "Himmel", "Heiter",
-    "Eisen", "Serie", "Flamme", "Aura the Guillotine", "Ubel",
-    "Land", "Denken", "Sein", "Kraft", "Lugner",
-    "Sung Jinwoo", "Cha Hae-In", "Yoo Jinho", "Choi Jong-In", "Baek Yoonho",
-    "Go Gunhee", "Woo Jinchul", "Igris", "Beru", "Tusk",
-
-    # Classics & Others: Gintama, Soul Eater, Fire Force, Dr. Stone, Bungo Stray Dogs, Classroom of the Elite (60)
-    "Gintoki Sakata", "Shinpachi Shimura", "Kagura", "Sadaharu", "Toshiro Hijikata",
-    "Sougo Okita", "Isao Kondo", "Kotaro Katsura", "Elizabeth", "Shinsuke Takasugi",
-    "Maka Albarn", "Soul Eater Evans", "Black Star", "Tsubaki Nakatsukasa", "Death the Kid",
-    "Liz Thompson", "Patty Thompson", "Franken Stein", "Lord Death", "Crona",
-    "Shinra Kusakabe", "Arthur Boyle", "Tamaki Kotatsu", "Maki Oze", "Takehisa Hinawa",
-    "Akitaru Obi", "Iris", "Benimaru Shinmon", "Joker", "Sho Kusakabe",
-    "Senku Ishigami", "Taiju Oki", "Yuzuriha Ogawa", "Tsukasa Shishio", "Gen Asagiri",
-    "Kohaku", "Chrome", "Suika", "Kinro", "Ginro",
-    "Atsushi Nakajima", "Osamu Dazai", "Doppo Kunikida", "Ranpo Edogawa", "Akiko Yosano",
-    "Kenji Miyazawa", "Kyoka Izumi", "Yukichi Fukuzawa", "Ryunosuke Akutagawa", "Chuya Nakahara",
-    "Kiyotaka Ayanokoji", "Suzune Horikita", "Kikyo Kushida", "Kei Karuizawa", "Honami Ichinose",
-    "Arisu Sakayanagi", "Kakeru Ryuen", "Rokusuke Koenji", "Ken Sudo", "Yosuke Hirata",
+    # Solo Leveling & One Punch Man
+    ("Sung Jinwoo", "Solo Leveling"), ("Cha Hae-In", "Solo Leveling"), ("Baek Yoonho", "Solo Leveling"), ("Choi Jong-In", "Solo Leveling"), ("Go Gunhee", "Solo Leveling"),
+    ("Woo Jinchul", "Solo Leveling"), ("Yoo Jinho", "Solo Leveling"), ("Thomas Andre", "Solo Leveling"), ("Christopher Reed", "Solo Leveling"), ("Liu Zhigang", "Solo Leveling"),
+    ("Saitama", "One Punch Man"), ("Genos", "One Punch Man"), ("Tatsumaki", "One Punch Man"), ("Fubuki", "One Punch Man"), ("Bang / Silver Fang", "One Punch Man"),
+    ("Garou", "One Punch Man"), ("King", "One Punch Man"), ("Sonic / Speed-o'-Sound Sonic", "One Punch Man"), ("Metal Bat", "One Punch Man"), ("Mumen Rider", "One Punch Man")
 ]
 
 
@@ -280,7 +151,7 @@ def is_group_chat(message: Message) -> bool:
     return message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
 
 
-def get_imposter_lobby_text(host_name: str, host_id: int, mode: str, players_dict: dict) -> str:
+def get_imposter_lobby_text(host_name: str, host_id: int, mode: str, category: str, players_dict: dict) -> str:
     if players_dict:
         player_list = "\n".join(
             [f"{idx}. 🕵️ [{name}](tg://user?id={uid})" for idx, (uid, name) in enumerate(players_dict.items(), 1)]
@@ -292,12 +163,13 @@ def get_imposter_lobby_text(host_name: str, host_id: int, mode: str, players_dic
 
     return (
         f"🕵️ **GUESS THE IMPOSTER — LOBBY ({mode.upper()} MODE)**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👑 **Host:** {host_mention}\n"
+        f"🎯 **Category:** `{category.title()}`\n"
         f"👥 **Agents Joined ({len(players_dict)}/10):** (Min 3 required)\n"
         f"{player_list}\n\n"
-        "⚠️ *Every player must start the bot privately first so secret characters can be delivered via DM!*\n\n"
-        "👉 Type `/join` to enter • `/startgame` to begin!"
+        f"⚠️ *Every player must start the bot privately first so secret characters can be delivered via DM!*\n\n"
+        f"👉 Type `/join` to enter • `/startgame` to begin!"
     )
 
 
@@ -313,14 +185,26 @@ async def cmd_imposter_create(message: Message):
     if chat_id in IMPOSTER_LOBBIES:
         return await message.reply("⚠️ An Imposter lobby is already active in this group!")
 
-    args = message.text.split()
-    mode = args[1].lower() if len(args) > 1 and args[1].lower() in {"classic", "double", "blind"} else "classic"
+    args = message.text.split(maxsplit=2)
+    mode = "classic"
+    category = "random"
+
+    if len(args) > 1:
+        potential_mode = args[1].lower()
+        if potential_mode in {"classic", "double", "blind"}:
+            mode = potential_mode
+            if len(args) > 2:
+                category = args[2].lower()
+        else:
+            category = " ".join(args[1:]).lower()
+
     await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
 
     IMPOSTER_LOBBIES[chat_id] = {
         "host": message.from_user.id,
         "host_name": message.from_user.full_name,
         "mode": mode,
+        "category": category,
         "phase": "WAITING",
         "players": {message.from_user.id: message.from_user.full_name},
         "alive": set(),
@@ -334,9 +218,23 @@ async def cmd_imposter_create(message: Message):
         host_name=message.from_user.full_name,
         host_id=message.from_user.id,
         mode=mode,
+        category=category,
         players_dict=IMPOSTER_LOBBIES[chat_id]["players"],
     )
     await message.answer(lobby_text, parse_mode="Markdown")
+
+
+@router.message(Command("animes"))
+async def cmd_list_animes(message: Message):
+    series_set = sorted(list(set(series for _, series in ANIME_CHARACTERS)))
+    text = (
+        f"📚 **AVAILABLE ANIME CATEGORIES & DATABASE**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total Characters: **500+ Main & Supportive Characters** across big franchises[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span)[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)!\n\n"
+        f"🔥 **Featured Series:**\n" + "".join(f"• `{s}`\n" for s in series_set) +
+        f"\n👉 *Usage example:* `/imposter classic naruto`"
+    )
+    await message.answer(text, parse_mode="Markdown")
 
 
 @router.message(Command("join"))
@@ -367,6 +265,7 @@ async def cmd_generic_join(message: Message):
         host_name=lobby["host_name"],
         host_id=lobby["host"],
         mode=lobby["mode"],
+        category=lobby["category"],
         players_dict=lobby["players"],
     )
     await message.answer(
@@ -417,15 +316,22 @@ async def cmd_generic_startgame(message: Message):
 
     lobby["phase"] = "DISTRIBUTING"
     player_ids = list(lobby["players"].keys())
-    lobby["alive"] = set(player_ids)
+    lobby["alive"] = list(player_ids)
+
+    cat = lobby["category"]
+    filtered_pool = ANIME_CHARACTERS if cat == "random" else [c for c in ANIME_CHARACTERS if cat in c[1].lower()]
+    if len(filtered_pool) < 2:
+        filtered_pool = ANIME_CHARACTERS
+
+    crew_tuple, imp_tuple = random.sample(filtered_pool, k=2)
+    crew_char, imp_char = crew_tuple[0], imp_tuple[0]
+
+    lobby["crew_char"] = crew_char
+    lobby["imp_char"] = imp_char
 
     imp_count = 2 if (lobby["mode"] == "double" and len(player_ids) >= 5) else 1
     imposters = set(random.sample(player_ids, k=imp_count))
     lobby["imposters"] = imposters
-
-    crew_char, imp_char = random.sample(ANIME_CHARACTERS, k=2)
-    lobby["crew_char"] = crew_char
-    lobby["imp_char"] = imp_char
 
     for pid in player_ids:
         try:
@@ -458,6 +364,21 @@ async def cmd_generic_startgame(message: Message):
                 f"❌ **DM Delivery Failed!** **{lobby['players'][pid]}** must start the bot in private chat first. Match aborted."
             )
 
+    bot_user = await message.bot.get_me()
+    dm_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📥 Check Secret Character in DM", url=f"https://t.me/{bot_user.username}?start=secret")]
+        ]
+    )
+
+    await message.answer(
+        "📩 **SECRET ANIME CHARACTERS SENT VIA DM!**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Tap the button below to open private chat and view your assigned character. Get ready!",
+        reply_markup=dm_kb,
+        parse_mode="Markdown"
+    )
+
     asyncio.create_task(run_imposter_phases(message, chat_id))
 
 
@@ -466,39 +387,29 @@ async def run_imposter_phases(message: Message, chat_id: int):
     if not lobby:
         return
 
-    await message.answer(
-        "📩 **SECRET ANIME CHARACTERS SENT VIA DM!**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Check your private messages! Each round, describe your character in chat (or lock in a clue with `/hint`) before voting begins.",
-        parse_mode="Markdown",
-    )
-
     while chat_id in IMPOSTER_LOBBIES:
         lobby["round_num"] += 1
         lobby["phase"] = "DESCRIBING"
         lobby["hints"] = {}
         lobby["votes"] = {}
 
-        alive_mentions = ", ".join(
-            f"[{lobby['players'][uid]}](tg://user?id={uid})" for uid in lobby["alive"]
-        )
-
         await message.answer(
-            f"🗣️ **ROUND {lobby['round_num']} — CHARACTER DESCRIPTION (45s)**\n"
+            f"🗣️ **ROUND {lobby['round_num']} — TURN-BY-TURN DESCRIPTIONS**\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👥 **Alive Players ({len(lobby['alive'])}):** {alive_mentions}\n\n"
-            f"Describe your character in the chat now! (Optional: `/hint your clue`)",
-            parse_mode="Markdown",
+            f"Players will now describe their character one by one in order!",
+            parse_mode="Markdown"
         )
-        await asyncio.sleep(45)
-        if chat_id not in IMPOSTER_LOBBIES:
-            return
 
-        if lobby["hints"]:
-            hint_lines = "\n".join(
-                f"• **{lobby['players'][uid]}:** _{clue}_" for uid, clue in lobby["hints"].items() if uid in lobby["alive"]
+        for uid in list(lobby["alive"]):
+            if chat_id not in IMPOSTER_LOBBIES:
+                return
+            p_name = lobby["players"][uid]
+            await message.answer(
+                f"🎯 **Turn:** [{p_name}](tg://user?id={uid})\n"
+                f"👉 Describe your character now! (You have 15 seconds)",
+                parse_mode="Markdown"
             )
-            await message.answer(f"📝 **Locked-In Clues:**\n{hint_lines}", parse_mode="Markdown")
+            await asyncio.sleep(15)
 
         lobby["phase"] = "VOTING"
         kb = InlineKeyboardMarkup(
@@ -545,6 +456,9 @@ async def run_imposter_phases(message: Message, chat_id: int):
         if not alive_imps:
             return await finalize_imposter_match(message, chat_id, crew_won=True)
 
+        if len(lobby["alive"]) == 2 and len(alive_imps) == 1:
+            return await finalize_imposter_match(message, chat_id, crew_won=False)
+
         if len(alive_imps) >= len(alive_crew):
             return await finalize_imposter_match(message, chat_id, crew_won=False)
 
@@ -573,7 +487,7 @@ async def finalize_imposter_match(message: Message, chat_id: int, crew_won: bool
     await message.answer(
         f"🎭 **GUESS THE IMPOSTER — FINAL RESULTS**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏆 **{'CREWMATES WIN! All Imposters caught!' if crew_won else 'IMPOSTERS WIN! They outlasted the Crew!'}**\n\n"
+        f"🏆 **{'CREWMATES WIN! All Imposters caught!' if crew_won else 'IMPOSTER WINS! They survived to the end!'}**\n\n"
         f"🤫 **True Imposter(s):** `{imp_names}`\n"
         f"🌟 **Crewmate Character:** `{lobby['crew_char']}`\n"
         f"🎭 **Imposter Character:** `{imp_char_display}`",
@@ -610,4 +524,3 @@ async def cb_imposter_vote(callback: CallbackQuery):
         return await callback.answer("That player is already eliminated.", show_alert=True)
     lobby["votes"][voter] = target
     await callback.answer(f"🗳️ Vote cast against {lobby['players'][target]}!")
-        
