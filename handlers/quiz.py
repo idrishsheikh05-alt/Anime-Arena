@@ -4,729 +4,529 @@ from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ChatType
-from database import ensure_user, record_progression, async_session
+from database import ensure_user, record_progression
 
 router = Router()
 
-# Active group quiz lobbies: chat_id -> state dict
-QUIZ_GAMES: dict[int, dict] = {}
+QUIZ_LOBBIES: dict[int, dict] = {}
+ACTIVE_QUIZZES: dict[int, dict] = {}
 
-# Expanded Question Bank with lots of questions
+# Comprehensive Anime Quiz Question Bank with Category Tags
 QUESTION_BANK = [
-    {"cat": "Anime Knowledge", "diff": "Easy", "xp": 50, "q": "Which hidden village does Naruto Uzumaki belong to?", "opts": ["Konohagakure", "Sunagakure", "Kirigakure", "Kumogakure"], "ans": 0},
-    {"cat": "Who Said It?", "diff": "Medium", "xp": 100, "q": "Who said: 'Throughout Heaven and Earth, I alone am the honored one'?", "opts": ["Sukuna", "Satoru Gojo", "Madara Uchiha", "Aizen"], "ans": 1},
-    {"cat": "Emoji Quiz", "diff": "Easy", "xp": 50, "q": "Decode the anime: 📓🍎✍️💀", "opts": ["Soul Eater", "Bleach", "Death Note", "Tokyo Ghoul"], "ans": 2},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Which Bankai allows Ichigo Kurosaki to compress all his spiritual pressure into a sleek black blade?", "opts": ["Senbonzakura Kageyoshi", "Tensa Zangetsu", "Zanka no Tachi", "Kannonbiraki"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "A blindfolded jujutsu sorcerer wielding Limitless and Six Eyes.", "opts": ["Kakashi Hatake", "Satoru Gojo", "Yami Sukehiro", "Levi Ackerman"], "ans": 1},
-    {"cat": "Guess the Opening", "diff": "Medium", "xp": 100, "q": "'Gurenge' by LiSA is the iconic first opening of which anime?", "opts": ["Demon Slayer", "Attack on Titan", "Jujutsu Kaisen", "Black Clover"], "ans": 0},
-    {"cat": "Anime Knowledge", "diff": "Hard", "xp": 150, "q": "What is the name of Edward Elric's automail mechanic in Fullmetal Alchemist?", "opts": ["Riza Hawkeye", "Winry Rockbell", "Olivier Armstrong", "Izumi Curtis"], "ans": 1},
-    {"cat": "Emoji Quiz", "diff": "Medium", "xp": 100, "q": "Decode the anime: 🏴‍☠️👒🍖🌊", "opts": ["Fairy Tail", "Vinland Saga", "One Piece", "Magi"], "ans": 2},
-    {"cat": "Who Said It?", "diff": "Hard", "xp": 150, "q": "Who said: 'Nothing happened' after absorbing Luffy's pain on Thriller Bark?", "opts": ["Sanji", "Roronoa Zoro", "Brook", "Franky"], "ans": 1},
-    {"cat": "Power Scaling", "diff": "Medium", "xp": 100, "q": "Which Titan power allows Eren Yeager to see memories of future inheritors?", "opts": ["Founding Titan", "War Hammer Titan", "Attack Titan", "Colossal Titan"], "ans": 2},
-    {"cat": "Classic Anime", "diff": "Easy", "xp": 50, "q": "What is the name of Goku's signature energy attack?", "opts": ["Spirit Bomb", "Kamehameha", "Final Flash", "Galick Gun"], "ans": 1},
-    {"cat": "Shonen Legends", "diff": "Medium", "xp": 100, "q": "In Hunter x Hunter, what is Gon Freecss's Nen type?", "opts": ["Transmuter", "Enhancer", "Emitter", "Conjurer"], "ans": 1},
-    {"cat": "Dark Fantasy", "diff": "Hard", "xp": 150, "q": "What is the true name of the demon bound to Asta's grimoire in Black Clover?", "opts": ["Lucifero", "Zagred", "Liebe", "Megicula"], "ans": 2},
-    {"cat": "Sci-Fi / Mecha", "diff": "Medium", "xp": 100, "q": "What is the name of the colossal humanoids that attack humanity in Attack on Titan?", "opts": ["Nomus", "Titans", "Ghouls", "Hollows"], "ans": 1},
-        # ===== PART 1: QUESTIONS 1-100 =====
-
-    {"cat": "Anime Knowledge", "diff": "Easy", "xp": 50, "q": "What is the name of Naruto's father?", "opts": ["Jiraiya", "Minato Namikaze", "Hiruzen Sarutobi", "Fugaku Uchiha"], "ans": 1},
-    {"cat": "Anime Knowledge", "diff": "Medium", "xp": 100, "q": "Who was the first person to awaken the Mangekyo Sharingan in the Uchiha clan's history?", "opts": ["Madara Uchiha", "Itachi Uchiha", "Indra Otsutsuki", "Sasuke Uchiha"], "ans": 2},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is known as the Copy Ninja?", "opts": ["Might Guy", "Kakashi Hatake", "Jiraiya", "Orochimaru"], "ans": 1},
-    {"cat": "Anime Knowledge", "diff": "Medium", "xp": 100, "q": "What is the name of the Nine-Tailed Fox sealed inside Naruto?", "opts": ["Shukaku", "Gyuki", "Kurama", "Matatabi"], "ans": 2},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Who was the Ten-Tails' jinchuriki during the Fourth Great Ninja War?", "opts": ["Hashirama", "Obito Uchiha", "Nagato", "Killer Bee"], "ans": 1},
-    {"cat": "Anime Knowledge", "diff": "Easy", "xp": 50, "q": "Which village is Gaara from?", "opts": ["Konohagakure", "Kirigakure", "Sunagakure", "Iwagakure"], "ans": 2},
-    {"cat": "Who Said It?", "diff": "Medium", "xp": 100, "q": "Who famously said, 'Wake up to reality'?", "opts": ["Pain", "Madara Uchiha", "Obito Uchiha", "Itachi Uchiha"], "ans": 1},
-    {"cat": "Anime Knowledge", "diff": "Hard", "xp": 150, "q": "What is the name of the Sage of Six Paths?", "opts": ["Hamura Otsutsuki", "Hagoromo Otsutsuki", "Toneri Otsutsuki", "Indra Otsutsuki"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which Naruto character uses the Eight Gates technique?", "opts": ["Shikamaru", "Might Guy", "Neji", "Kiba"], "ans": 1},
-    {"cat": "Anime Knowledge", "diff": "Medium", "xp": 100, "q": "Who trained the legendary Sannin?", "opts": ["Danzo", "Hiruzen Sarutobi", "Tobirama", "Minato"], "ans": 1},
-
-    {"cat": "One Piece", "diff": "Easy", "xp": 50, "q": "What is the name of Luffy's first ship?", "opts": ["Thousand Sunny", "Going Merry", "Red Force", "Oro Jackson"], "ans": 1},
-    {"cat": "One Piece", "diff": "Medium", "xp": 100, "q": "Who was the first member to join Luffy's crew?", "opts": ["Sanji", "Usopp", "Roronoa Zoro", "Nami"], "ans": 2},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is known as the Surgeon of Death?", "opts": ["Eustass Kid", "Trafalgar D. Water Law", "Dracule Mihawk", "Crocodile"], "ans": 1},
-    {"cat": "One Piece", "diff": "Medium", "xp": 100, "q": "What is the name of Sanji's family?", "opts": ["Donquixote", "Vinsmoke", "Charlotte", "Nefertari"], "ans": 1},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Who was the captain of the Rocks Pirates?", "opts": ["Gol D. Roger", "Edward Newgate", "Rocks D. Xebec", "Shiki"], "ans": 2},
-    {"cat": "One Piece", "diff": "Easy", "xp": 50, "q": "What is the name of Chopper's Devil Fruit?", "opts": ["Hito Hito no Mi", "Ushi Ushi no Mi", "Inu Inu no Mi", "Neko Neko no Mi"], "ans": 0},
-    {"cat": "One Piece", "diff": "Medium", "xp": 100, "q": "Which island is the home of the Revolutionary Army's headquarters?", "opts": ["Dressrosa", "Baltigo", "Wano", "Punk Hazard"], "ans": 1},
-    {"cat": "Who Said It?", "diff": "Medium", "xp": 100, "q": "Who said, 'I want to live!' at Enies Lobby?", "opts": ["Nami", "Nico Robin", "Vivi", "Boa Hancock"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of Gol D. Roger's ship?", "opts": ["Moby Dick", "Oro Jackson", "Polar Tang", "Thriller Bark"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which Straw Hat is a skeleton musician?", "opts": ["Franky", "Brook", "Jinbe", "Usopp"], "ans": 1},
-
-    {"cat": "Bleach", "diff": "Easy", "xp": 50, "q": "What is the name of Ichigo's Zanpakuto?", "opts": ["Zangetsu", "Benihime", "Hyorinmaru", "Sakanade"], "ans": 0},
-    {"cat": "Bleach", "diff": "Medium", "xp": 100, "q": "Who is the captain of Squad 10?", "opts": ["Byakuya Kuchiki", "Toshiro Hitsugaya", "Kenpachi Zaraki", "Shunsui Kyoraku"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is known as the Kenpachi?", "opts": ["Renji Abarai", "Kenpachi Zaraki", "Kisuke Urahara", "Gin Ichimaru"], "ans": 1},
-    {"cat": "Bleach", "diff": "Medium", "xp": 100, "q": "What is the name of Rukia's Zanpakuto?", "opts": ["Senbonzakura", "Sode no Shirayuki", "Hyorinmaru", "Suzumushi"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first captain of Squad 12?", "opts": ["Kisuke Urahara", "Mayuri Kurotsuchi", "Kirio Hikifune", "Shinji Hirako"], "ans": 2},
-    {"cat": "Bleach", "diff": "Easy", "xp": 50, "q": "What is the name of Ichigo's younger sister?", "opts": ["Yuzu Kurosaki", "Orihime Inoue", "Rangiku Matsumoto", "Momo Hinamori"], "ans": 0},
-    {"cat": "Bleach", "diff": "Medium", "xp": 100, "q": "Who is known as the God of Thunder in the Soul Society?", "opts": ["Soi Fon", "Yoruichi Shihouin", "Retsu Unohana", "Lisa Yadomaru"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of Aizen's Zanpakuto?", "opts": ["Kyoka Suigetsu", "Katen Kyokotsu", "Ryujin Jakka", "Suzumebachi"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character was formerly the captain of Squad 5 before Aizen?", "opts": ["Shinji Hirako", "Jushiro Ukitake", "Sajin Komamura", "Kensei Muguruma"], "ans": 0},
-    {"cat": "Bleach", "diff": "Easy", "xp": 50, "q": "What is the name of Ichigo's father?", "opts": ["Isshin Kurosaki", "Ryuken Ishida", "Genryusai Yamamoto", "Kugo Ginjo"], "ans": 0},
-
-    {"cat": "Dragon Ball", "diff": "Easy", "xp": 50, "q": "What is Goku's Saiyan birth name?", "opts": ["Vegeta", "Kakarot", "Bardock", "Raditz"], "ans": 1},
-    {"cat": "Dragon Ball", "diff": "Medium", "xp": 100, "q": "Who is Vegeta's father?", "opts": ["King Cold", "King Vegeta", "Bardock", "Nappa"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is the God of Destruction of Universe 7?", "opts": ["Whis", "Beerus", "Zeno", "Champa"], "ans": 1},
-    {"cat": "Dragon Ball", "diff": "Medium", "xp": 100, "q": "Who trained Gohan during the Saiyan Saga?", "opts": ["Master Roshi", "Piccolo", "King Kai", "Yamcha"], "ans": 1},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "What is the name of the fusion between Goku and Vegeta using the Potara earrings?", "opts": ["Gogeta", "Vegito", "Gotenks", "Kefla"], "ans": 1},
-    {"cat": "Dragon Ball", "diff": "Easy", "xp": 50, "q": "How many Dragon Balls are traditionally needed to summon Shenron?", "opts": ["Five", "Six", "Seven", "Eight"], "ans": 2},
-    {"cat": "Dragon Ball", "diff": "Medium", "xp": 100, "q": "Who is the angel attendant of Beerus?", "opts": ["Vados", "Whis", "Merus", "Marcarita"], "ans": 1},
-    {"cat": "Dragon Ball", "diff": "Hard", "xp": 150, "q": "What is the name of the legendary Super Saiyan from Universe 6?", "opts": ["Caulifla", "Cabba", "Kale", "Hit"], "ans": 2},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character is known as the Prince of all Saiyans?", "opts": ["Goku", "Broly", "Vegeta", "Trunks"], "ans": 2},
-    {"cat": "Dragon Ball", "diff": "Easy", "xp": 50, "q": "What is the name of Goku's grandfather?", "opts": ["Bardock", "Grandpa Gohan", "King Kai", "Ox-King"], "ans": 1},
-
-    {"cat": "Jujutsu Kaisen", "diff": "Easy", "xp": 50, "q": "What is the name of Yuji Itadori's school?", "opts": ["Kyoto Jujutsu High", "Tokyo Jujutsu High", "Tokyo Metropolitan High", "Shibuya Academy"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Medium", "xp": 100, "q": "Who is the King of Curses?", "opts": ["Mahito", "Jogo", "Ryomen Sukuna", "Kenjaku"], "ans": 2},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character uses the Cursed Speech technique?", "opts": ["Panda", "Toge Inumaki", "Yuta Okkotsu", "Kento Nanami"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Medium", "xp": 100, "q": "What is the name of Megumi's shikigami technique?", "opts": ["Cursed Spirit Manipulation", "Ten Shadows Technique", "Boogie Woogie", "Limitless"], "ans": 1},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the body Kenjaku uses during much of the main story?", "opts": ["Suguru Geto", "Toji Fushiguro", "Yuta Okkotsu", "Kento Nanami"], "ans": 0},
-    {"cat": "Jujutsu Kaisen", "diff": "Easy", "xp": 50, "q": "What is the name of Yuji's grandfather?", "opts": ["Wasuke Itadori", "Masamichi Yaga", "Yoshinobu Gakuganji", "Tengen"], "ans": 0},
-    {"cat": "Jujutsu Kaisen", "diff": "Medium", "xp": 100, "q": "What is the name of Todo's cursed technique?", "opts": ["Ratio Technique", "Boogie Woogie", "Idle Transfiguration", "Straw Doll Technique"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "What is the name of Yuta Okkotsu's childhood friend and cursed spirit?", "opts": ["Rika Orimoto", "Maki Zenin", "Mai Zenin", "Yuki Tsukumo"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which sorcerer uses the Ratio Technique?", "opts": ["Aoi Todo", "Kento Nanami", "Mei Mei", "Noritoshi Kamo"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Easy", "xp": 50, "q": "What is the name of Gojo's school in Kyoto's rival campus?", "opts": ["Kyoto Jujutsu High", "Tokyo Jujutsu High", "Jujutsu Academy", "Kamo Academy"], "ans": 0},
-
-    {"cat": "Demon Slayer", "diff": "Easy", "xp": 50, "q": "What is the name of Tanjiro's sister?", "opts": ["Kanao", "Nezuko", "Aoi", "Mitsuri"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Medium", "xp": 100, "q": "Who is the Flame Hashira?", "opts": ["Tengen Uzui", "Kyojuro Rengoku", "Sanemi Shinazugawa", "Muichiro Tokito"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character wears a boar mask?", "opts": ["Zenitsu Agatsuma", "Genya Shinazugawa", "Inosuke Hashibira", "Giyu Tomioka"], "ans": 2},
-    {"cat": "Demon Slayer", "diff": "Medium", "xp": 100, "q": "Who is the leader of the Demon Slayer Corps?", "opts": ["Kagaya Ubuyashiki", "Muzan Kibutsuji", "Sakonji Urokodaki", "Shinjuro Rengoku"], "ans": 0},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "What is the name of the first demon to be turned by Muzan?", "opts": ["Akaza", "Kokushibo", "Tamayo", "The series does not explicitly identify the first demon"], "ans": 3},
-    {"cat": "Demon Slayer", "diff": "Easy", "xp": 50, "q": "Which breathing style is associated with Zenitsu?", "opts": ["Water Breathing", "Thunder Breathing", "Wind Breathing", "Stone Breathing"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Medium", "xp": 100, "q": "What is the rank of the strongest demons serving Muzan?", "opts": ["Hashira", "Twelve Kizuki", "Kakushi", "Tsuguko"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "Which Upper Rank demon was formerly a human named Hakuji?", "opts": ["Doma", "Akaza", "Gyutaro", "Kokushibo"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which Hashira is known as the Mist Hashira?", "opts": ["Obanai Iguro", "Muichiro Tokito", "Mitsuri Kanroji", "Gyomei Himejima"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Easy", "xp": 50, "q": "What is the name of the demon who killed Tanjiro's family?", "opts": ["Akaza", "Muzan Kibutsuji", "Doma", "Enmu"], "ans": 1},
-
-    {"cat": "Attack on Titan", "diff": "Easy", "xp": 50, "q": "What is the name of Eren's hometown?", "opts": ["Trost", "Shiganshina", "Stohess", "Mitras"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Medium", "xp": 100, "q": "Who is known as the Commander of the Survey Corps before Hange?", "opts": ["Levi Ackerman", "Erwin Smith", "Keith Shadis", "Dot Pixis"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is Mikasa's childhood friend?", "opts": ["Jean Kirstein", "Eren Yeager", "Reiner Braun", "Armin Arlert"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Medium", "xp": 100, "q": "What is the name of the military branch responsible for exploring beyond the Walls?", "opts": ["Military Police", "Garrison Regiment", "Survey Corps", "Warrior Unit"], "ans": 2},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Which Titan is also known as the Dancing Titan?", "opts": ["Jaw Titan", "Female Titan", "Attack Titan", "Cart Titan"], "ans": 0},
-    {"cat": "Attack on Titan", "diff": "Easy", "xp": 50, "q": "What is the name of Armin's childhood friend?", "opts": ["Connie", "Eren", "Marco", "Reiner"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Medium", "xp": 100, "q": "Who inherited the Colossal Titan after Bertholdt?", "opts": ["Jean Kirstein", "Armin Arlert", "Connie Springer", "Floch Forster"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "What is the name of the royal family ruling inside the Walls?", "opts": ["Fritz", "Ackerman", "Braun", "Tybur"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character is nicknamed Humanity's Strongest Soldier?", "opts": ["Erwin Smith", "Levi Ackerman", "Mikasa Ackerman", "Hange Zoe"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Easy", "xp": 50, "q": "What are the giant humanoid creatures called?", "opts": ["Hollows", "Titans", "Ghouls", "Nomus"], "ans": 1},
-
-    {"cat": "Death Note", "diff": "Easy", "xp": 50, "q": "What is the name of the Shinigami who drops the Death Note?", "opts": ["Rem", "Ryuk", "Sidoh", "Gelus"], "ans": 1},
-    {"cat": "Death Note", "diff": "Medium", "xp": 100, "q": "What is the real name of L?", "opts": ["Near", "Mello", "L Lawliet", "Teru Mikami"], "ans": 2},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is known as the Second Kira?", "opts": ["Kiyomi Takada", "Misa Amane", "Naomi Misora", "Sayu Yagami"], "ans": 1},
-    {"cat": "Death Note", "diff": "Medium", "xp": 100, "q": "What is the name of Light Yagami's father?", "opts": ["Soichiro Yagami", "Touta Matsuda", "Shuichi Aizawa", "Kanzo Mogi"], "ans": 0},
-    {"cat": "Death Note", "diff": "Hard", "xp": 150, "q": "What is the name of the Shinigami who gives Misa the Death Note?", "opts": ["Ryuk", "Rem", "Sidoh", "Armonia Justin"], "ans": 1},
-    {"cat": "Death Note", "diff": "Easy", "xp": 50, "q": "What does Light Yagami initially use the Death Note for?", "opts": ["Finding treasure", "Punishing criminals", "Saving Shinigami", "Becoming a detective"], "ans": 1},
-    {"cat": "Death Note", "diff": "Medium", "xp": 100, "q": "Who is the successor to L at Wammy's House?", "opts": ["Matsuda", "Near", "Mello", "Matt"], "ans": 1},
-    {"cat": "Death Note", "diff": "Hard", "xp": 150, "q": "What is the name of the orphanage associated with L, Near and Mello?", "opts": ["Grace Field House", "Wammy's House", "Sunrise Academy", "St. Marguerite"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character is a professional detective and a member of the investigation team?", "opts": ["Teru Mikami", "Touta Matsuda", "Kiyomi Takada", "Misa Amane"], "ans": 1},
-    {"cat": "Death Note", "diff": "Easy", "xp": 50, "q": "What is the name of Light's younger sister?", "opts": ["Misa", "Sayu", "Naomi", "Kiyomi"], "ans": 1},
-
-    {"cat": "Hunter x Hunter", "diff": "Easy", "xp": 50, "q": "What is the name of Gon's father?", "opts": ["Silva Zoldyck", "Ging Freecss", "Isaac Netero", "Kite"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Medium", "xp": 100, "q": "Which family does Killua belong to?", "opts": ["Freecss", "Zoldyck", "Kurta", "Nostrade"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character is a doctor-in-training and one of Gon's closest friends?", "opts": ["Kurapika", "Leorio", "Knuckle", "Kite"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Medium", "xp": 100, "q": "What is the name of the leader of the Phantom Troupe?", "opts": ["Hisoka", "Chrollo Lucilfer", "Feitan", "Illumi"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of the Hunter Exam's examiner during Gon's first exam?", "opts": ["Satotz", "Buhara", "Menchi", "Basho"], "ans": 0},
-    {"cat": "Hunter x Hunter", "diff": "Easy", "xp": 50, "q": "What is the name of the game Gon enters to find clues about his father?", "opts": ["Heaven's Arena", "Greed Island", "Yorknew City", "Dark Continent"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Medium", "xp": 100, "q": "Which Nen category does Kurapika use when his eyes turn scarlet?", "opts": ["Enhancer", "Specialist", "Emitter", "Transmuter"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of the chairman of the Hunter Association during the Chimera Ant arc?", "opts": ["Beyond Netero", "Isaac Netero", "Cheadle Yorkshire", "Pariston Hill"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which Phantom Troupe member uses a vacuum cleaner called Blinky?", "opts": ["Machi", "Shizuku", "Pakunoda", "Shalnark"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Easy", "xp": 50, "q": "What is the name of Killua's younger sister?", "opts": ["Alluka", "Mito", "Canary", "Palm"], "ans": 0},
-
-    {"cat": "My Hero Academia", "diff": "Easy", "xp": 50, "q": "What is the name of the school Izuku Midoriya attends?", "opts": ["Shiketsu High", "U.A. High School", "Ketsubutsu Academy", "Seiai Academy"], "ans": 1},
-    {"cat": "My Hero Academia", "diff": "Medium", "xp": 100, "q": "What is All Might's real name?", "opts": ["Shota Aizawa", "Toshinori Yagi", "Enji Todoroki", "Hizashi Yamada"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Easy", "xp": 50, "q": "Which character has the hero name Froppy?", "opts": ["Mina Ashido", "Tsuyu Asui", "Ochaco Uraraka", "Momo Yaoyorozu"], "ans": 1},
-    {"cat": "My Hero Academia", "diff": "Medium", "xp": 100, "q": "What is the name of Shoto Todoroki's father?", "opts": ["Hawks", "Endeavor", "Best Jeanist", "Edgeshot"], "ans": 1},
-    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "Which previous One For All user possessed the Gearshift quirk?", "opts": ["Second user", "Third user", "Fourth user", "Sixth user"], "ans": 0},
-    {"cat": "My Hero Academia", "diff": "Easy", "xp": 50, "q": "What is the name of Bakugo's quirk?", "opts": ["Explosion", "Engine", "Hardening", "Dark Shadow"], "ans": 0},
-    {"cat": "My Hero Academia", "diff": "Medium", "xp": 100, "q": "Who is the homeroom teacher of Class 1-A?", "opts": ["Present Mic", "Shota Aizawa", "All Might", "Cementoss"], "ans": 1},
-    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "What is the name of the League of Villains' original leader?", "opts": ["Tomura Shigaraki", "All For One", "Dabi", "Kurogiri"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character can create objects using her body fat?", "opts": ["Kyoka Jiro", "Momo Yaoyorozu", "Toru Hagakure", "Mina Ashido"], "ans": 1},
-    {"cat": "My Hero Academia", "diff": "Easy", "xp": 50, "q": "What is the name of Deku's childhood friend and rival?", "opts": ["Eijiro Kirishima", "Katsuki Bakugo", "Tenya Iida", "Hitoshi Shinso"], "ans": 1},
-        # ===== PART 2: QUESTIONS 101-200 =====
-
-    # FAIRY TAIL
-
-    {"cat": "Fairy Tail Lore", "diff": "Hard", "xp": 150, "q": "What is the original identity of Zeref's younger brother?", "opts": ["Natsu Dragneel", "Larcade Dragneel", "August", "E.N.D."], "ans": 0},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Who created the Etherious demons of the Book of Zeref?", "opts": ["Mavis Vermillion", "Zeref Dragneel", "Acnologia", "Irene Belserion"], "ans": 1},
-    {"cat": "Fairy Tail Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Erza Scarlet's mother?", "opts": ["Mavis Vermillion", "Irene Belserion", "Dimaria Yesta", "Brandish Mu"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Hard", "xp": 150, "q": "Which character is known as the Black Wizard?", "opts": ["Acnologia", "Zeref Dragneel", "Jellal Fernandes", "Mard Geer"], "ans": 1},
-    {"cat": "Fairy Tail Lore", "diff": "Medium", "xp": 100, "q": "What is the name of the celestial spirit associated with Lucy's zodiac sign?", "opts": ["Aquarius", "Cancer", "Virgo", "Sagittarius"], "ans": 0},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Which Dragon Slayer was raised by the Sky Dragon Grandeeney?", "opts": ["Rogue Cheney", "Wendy Marvell", "Sting Eucliffe", "Gajeel Redfox"], "ans": 1},
-    {"cat": "Fairy Tail Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient dragon who taught Natsu Fire Dragon Slayer Magic?", "opts": ["Metalicana", "Igneel", "Weisslogia", "Atlas Flame"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which Fairy Tail member uses Satan Soul Take Over magic?", "opts": ["Lisanna Strauss", "Mirajane Strauss", "Evergreen", "Cana Alberona"], "ans": 1},
-    {"cat": "Fairy Tail Lore", "diff": "Hard", "xp": 150, "q": "Who was the first guild master of Fairy Tail?", "opts": ["Makarov Dreyar", "Precht Gaebolg", "Mavis Vermillion", "Yuri Dreyar"], "ans": 2},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "What is the name of Acnologia's original human identity profession?", "opts": ["Dragon Slayer", "Dragon King", "Dragon Priest", "Dragon Emperor"], "ans": 0},
-
-    # BLACK CLOVER
-
-    {"cat": "Black Clover Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the devil residing within Asta's grimoire?", "opts": ["Lucifero", "Liebe", "Zagred", "Megicula"], "ans": 1},
-    {"cat": "Black Clover Lore", "diff": "Hard", "xp": 150, "q": "Who is the mother of Asta?", "opts": ["Acier Silva", "Licita", "Lolopechka", "Vanica"], "ans": 1},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "Which devil occupies the highest position in the Underworld's first layer?", "opts": ["Beelzebub", "Lucifero", "Megicula", "Adrammelech"], "ans": 1},
-    {"cat": "Black Clover Lore", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the five-leaf grimoire before Asta?", "opts": ["Julius Novachrono", "Licht", "Yuno", "Lemiel Silvamillion"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character possesses Spatial Magic and is the vice-captain of the Black Bulls?", "opts": ["Zora Ideale", "Nacht Faust", "Finral Roulacase", "Gauche Adlai"], "ans": 1},
-    {"cat": "Black Clover Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the first Wizard King?", "opts": ["Julius Novachrono", "Lemiel Silvamillion Clover", "Licht", "Lumiere Silva"], "ans": 1},
-    {"cat": "Black Clover Lore", "diff": "Medium", "xp": 100, "q": "Which magic attribute does Nozel Silva possess?", "opts": ["Mercury Magic", "Steel Magic", "Water Magic", "Mist Magic"], "ans": 0},
-    {"cat": "Power Scaling", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient elf leader who became the demon Licht?", "opts": ["Patolli", "Licht", "Rhya", "Vetto"], "ans": 1},
-    {"cat": "Black Clover Lore", "diff": "Hard", "xp": 150, "q": "Who is the devil associated with the Qliphoth's second gate?", "opts": ["Lucifero", "Lilith", "Naamah", "Beelzebub"], "ans": 3},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which Black Bulls member uses spatial magic to transport people?", "opts": ["Magna Swing", "Finral Roulacase", "Luck Voltia", "Gordon Agrippa"], "ans": 1},
-
-    # POKEMON
-
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "Which Pokémon is known as the Original One in Sinnoh mythology?", "opts": ["Dialga", "Palkia", "Arceus", "Giratina"], "ans": 2},
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "Which Pokémon created the legendary birds according to the Orange Islands anime storyline?", "opts": ["Lugia", "Ho-Oh", "Mewtwo", "Articuno"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Hard", "xp": 150, "q": "Which Sinnoh Champion is famous for using Garchomp?", "opts": ["Steven Stone", "Cynthia", "Wallace", "Diantha"], "ans": 1},
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the Pokémon that represents antimatter in Sinnoh mythology?", "opts": ["Dialga", "Palkia", "Giratina", "Uxie"], "ans": 2},
-    {"cat": "Pokemon Knowledge", "diff": "Medium", "xp": 100, "q": "Which Pokémon evolves into Gyarados?", "opts": ["Feebas", "Magikarp", "Carvanha", "Goldeen"], "ans": 1},
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "Which Pokémon is associated with the concept of time?", "opts": ["Palkia", "Dialga", "Giratina", "Celebi"], "ans": 1},
-    {"cat": "Pokemon Knowledge", "diff": "Medium", "xp": 100, "q": "What is the name of Ash's first Pokémon partner?", "opts": ["Charizard", "Pikachu", "Bulbasaur", "Squirtle"], "ans": 1},
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "Which Pokémon is known as the Aura Pokémon?", "opts": ["Lucario", "Riolu", "Absol", "Gallade"], "ans": 0},
-    {"cat": "Pokemon Lore", "diff": "Hard", "xp": 150, "q": "Which legendary Pokémon represents the sea in the Hoenn weather trio?", "opts": ["Groudon", "Rayquaza", "Kyogre", "Regice"], "ans": 2},
-    {"cat": "Pokemon Knowledge", "diff": "Medium", "xp": 100, "q": "Which Pokémon is the evolved form of Eevee using a Water Stone?", "opts": ["Jolteon", "Flareon", "Vaporeon", "Espeon"], "ans": 2},
-
-    # FULLMETAL ALCHEMIST
-
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the being who created the Homunculi?", "opts": ["Father", "Van Hohenheim", "Truth", "Dante"], "ans": 0},
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "Which Homunculus represents the sin of Envy?", "opts": ["Greed", "Envy", "Lust", "Pride"], "ans": 1},
-    {"cat": "FMA Lore", "diff": "Medium", "xp": 100, "q": "What is the name of the country where Edward and Alphonse live?", "opts": ["Xing", "Amestris", "Drachma", "Creta"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character is known as the Flame Alchemist?", "opts": ["Alex Louis Armstrong", "Roy Mustang", "Maes Hughes", "King Bradley"], "ans": 1},
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the principle that governs alchemy?", "opts": ["Equivalent Exchange", "The Law of Conservation", "Alchemy Balance", "Truth's Contract"], "ans": 0},
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "Who is the father of Edward and Alphonse Elric?", "opts": ["Roy Mustang", "Van Hohenheim", "Scar", "King Bradley"], "ans": 1},
-    {"cat": "FMA Lore", "diff": "Medium", "xp": 100, "q": "Which Homunculus disguises himself as King Bradley?", "opts": ["Wrath", "Pride", "Sloth", "Gluttony"], "ans": 0},
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the mysterious gate encountered during human transmutation?", "opts": ["The Gate of Truth", "The Gate of Xerxes", "The Philosopher's Gate", "The Gate of Equivalent Exchange"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Who is Edward Elric's younger brother?", "opts": ["Ling Yao", "Alphonse Elric", "Selim Bradley", "Jean Havoc"], "ans": 1},
-    {"cat": "FMA Lore", "diff": "Hard", "xp": 150, "q": "Which ancient civilization was destroyed in the creation of the nationwide transmutation circle?", "opts": ["Xing", "Ishval", "Xerxes", "Amestris"], "ans": 2},
-
-    # TOKYO GHOUL
-
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the organization that investigates and hunts ghouls?", "opts": ["CCG", "Aogiri Tree", "Anteiku", "V"], "ans": 0},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Medium", "xp": 100, "q": "What is the name of Kaneki's kagune type?", "opts": ["Ukaku", "Koukaku", "Rinkaku", "Bikaku"], "ans": 2},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "Who performed the surgery that transformed Kaneki into a one-eyed ghoul?", "opts": ["Dr. Shiba", "Akihiro Kanou", "Kureo Mado", "Yoshimura"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which ghoul is known as the Gourmet?", "opts": ["Noro", "Shuu Tsukiyama", "Tatara", "Roma Hoito"], "ans": 1},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the ghoul organization led by Eto Yoshimura?", "opts": ["Anteiku", "Aogiri Tree", "Clowns", "V"], "ans": 1},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Medium", "xp": 100, "q": "What is the name of the coffee shop where Kaneki first works?", "opts": ["Re:", "Anteiku", "HySy ArtMask Studio", "Helter Skelter"], "ans": 1},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "What is the identity of the One-Eyed Owl?", "opts": ["Eto Yoshimura", "Touka Kirishima", "Rize Kamishiro", "Nishiki Nishio"], "ans": 0},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Touka's younger brother?", "opts": ["Nishiki Nishio", "Ayato Kirishima", "Hideyoshi Nagachika", "Renji Yomo"], "ans": 1},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Medium", "xp": 100, "q": "Which investigator becomes known as the Reaper?", "opts": ["Kishou Arima", "Koutarou Amon", "Juuzou Suzuya", "Akira Mado"], "ans": 0},
-    {"cat": "Tokyo Ghoul Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Kaneki's childhood friend?", "opts": ["Hideyoshi Nagachika", "Nishiki Nishio", "Koutarou Amon", "Shuu Tsukiyama"], "ans": 0},
+    # Naruto
+    {"q": "What is the name of Naruto's signature jutsu learned from Jiraiya?", "options": ["Chidori", "Rasengan", "Shadow Clone", "Fire Ball"], "ans": 1, "cat": "naruto", "diff": "Easy"},
+    {"q": "Which clan is Sasuke Uchiha a proud survivor of?", "options": ["Hyuga Clan", "Uchiha Clan", "Senju Clan", "Uzumaki Clan"], "ans": 1, "cat": "naruto", "diff": "Easy"},
+    {"q": "Who is the leader of Akatsuki working from the shadows for most of Shippuden?", "options": ["Pain", "Obito / Madara", "Orochimaru", "Black Zetsu"], "ans": 1, "cat": "naruto", "diff": "Medium"},
+    {"q": "What tailed beast is sealed inside Naruto Uzumaki?", "options": ["One-Tail Shukaku", "Nine-Tails Kurama", "Eight-Tails Gyuki", "Three-Tails Isobu"], "ans": 1, "cat": "naruto", "diff": "Easy"},
+    {"q": "What is Kakashi Hatake's famous nickname in the ninja world?", "options": ["The Yellow Flash", "Copy Ninja Kakashi", "Noble Beast", "White Fang"], "ans": 1, "cat": "naruto", "diff": "Easy"},
+    # NARUTO — FRESH QUESTION BANK (100 QUESTIONS)
 
-    # SWORD ART ONLINE
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to awaken the Mangekyo Sharingan in the Uchiha clan's recorded history?", "opts": ["Indra Otsutsuki", "Madara Uchiha", "Izuna Uchiha", "Tajima Uchiha"], "ans": 0},
 
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "What is Kirito's player name in Sword Art Online?", "opts": ["Kirito", "Kazuto", "Black Swordsman", "The Flash"], "ans": 0},
-    {"cat": "SAO Lore", "diff": "Medium", "xp": 100, "q": "What is the name of the guild Kirito briefly joins?", "opts": ["Knights of the Blood", "Moonlit Black Cats", "Laughing Coffin", "Aincrad Liberation Force"], "ans": 1},
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "Who created the original Sword Art Online game?", "opts": ["Kikuoka Seijirou", "Akihiko Kayaba", "Oberon", "Heathcliff"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character is known as the Flash?", "opts": ["Sinon", "Asuna", "Lisbeth", "Silica"], "ans": 1},
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the virtual world in the Alicization arc?", "opts": ["ALfheim Online", "Gun Gale Online", "Underworld", "Aincrad"], "ans": 2},
-    {"cat": "SAO Lore", "diff": "Medium", "xp": 100, "q": "What is the name of Kirito's sister or cousin?", "opts": ["Suguha Kirigaya", "Shino Asada", "Yui", "Alice Zuberg"], "ans": 0},
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the death game guild known for murdering players?", "opts": ["Moonlit Black Cats", "Laughing Coffin", "Sleeping Knights", "Divine Division"], "ans": 1},
-    {"cat": "SAO Lore", "diff": "Medium", "xp": 100, "q": "Which game is primarily associated with Sinon?", "opts": ["Aincrad", "Gun Gale Online", "ALfheim Online", "Underworld"], "ans": 1},
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the AI girl adopted by Kirito and Asuna?", "opts": ["Alice", "Yui", "Strea", "Argo"], "ans": 1},
-    {"cat": "SAO Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the highest-ranking guild in Aincrad led by Heathcliff?", "opts": ["Moonlit Black Cats", "Knights of the Blood", "Laughing Coffin", "Aincrad Liberation Force"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Madara Uchiha's younger brother?", "opts": ["Tajima", "Izuna", "Fugaku", "Shisui"], "ans": 1},
 
-    # JOJO'S BIZARRE ADVENTURE
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which eyes did Madara transplant into himself to obtain the Eternal Mangekyo Sharingan?", "opts": ["Obito's eyes", "Shisui's eyes", "Izuna's eyes", "Fugaku's eyes"], "ans": 2},
 
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Jonathan Joestar's Stand?", "opts": ["The World", "Hermit Purple", "Jonathan does not have a Stand in the original story", "Star Platinum"], "ans": 2},
-    {"cat": "JoJo Lore", "diff": "Medium", "xp": 100, "q": "Who is the main antagonist of Stardust Crusaders?", "opts": ["Kars", "DIO", "Diavolo", "Enrico Pucci"], "ans": 1},
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Jotaro Kujo's Stand?", "opts": ["Crazy Diamond", "Star Platinum", "Gold Experience", "King Crimson"], "ans": 1},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which character uses the Stand Killer Queen?", "opts": ["Yoshikage Kira", "Diavolo", "DIO", "Rohan Kishibe"], "ans": 0},
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the Pillar Man who seeks the Red Stone of Aja?", "opts": ["Wamuu", "Esidisi", "Kars", "Santana"], "ans": 2},
-    {"cat": "JoJo Lore", "diff": "Medium", "xp": 100, "q": "Which JoJo is the protagonist of Golden Wind?", "opts": ["Jotaro Kujo", "Giorno Giovanna", "Josuke Higashikata", "Joseph Joestar"], "ans": 1},
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "What is the name of Diavolo's Stand?", "opts": ["King Crimson", "Metallica", "The Grateful Dead", "Purple Haze"], "ans": 0},
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "Which Stand is capable of stopping time?", "opts": ["Crazy Diamond", "The World", "Echoes", "Heaven's Door"], "ans": 1},
-    {"cat": "JoJo Lore", "diff": "Medium", "xp": 100, "q": "What is the name of the Stand user who is also a manga artist?", "opts": ["Koichi Hirose", "Rohan Kishibe", "Okuyasu Nijimura", "Josuke Higashikata"], "ans": 1},
-    {"cat": "JoJo Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the horse ridden by Johnny Joestar?", "opts": ["Slow Dancer", "Silver Bullet", "Poco Loco", "Hey Ya"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the Uchiha who possessed the Kotoamatsukami technique?", "opts": ["Shisui Uchiha", "Itachi Uchiha", "Fugaku Uchiha", "Izuna Uchiha"], "ans": 0},
 
-    # MOB PSYCHO 100 / ONE PUNCH MAN
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who gave Danzo the right eye of Shisui Uchiha?", "opts": ["Itachi", "Orochimaru", "Danzo stole it himself", "Hiruzen"], "ans": 2},
 
-    {"cat": "Mob Psycho Lore", "diff": "Hard", "xp": 150, "q": "What percentage does Mob reach when his emotions overflow?", "opts": ["50%", "75%", "100%", "120%"], "ans": 2},
-    {"cat": "Mob Psycho Lore", "diff": "Medium", "xp": 100, "q": "What is the name of Mob's younger brother?", "opts": ["Ritsu Kageyama", "Teruki Hanazawa", "Shou Suzuki", "Tome Kurata"], "ans": 0},
-    {"cat": "Mob Psycho Lore", "diff": "Hard", "xp": 150, "q": "What organization is led by Toichiro Suzuki?", "opts": ["Claw", "Black Vinegar Middle School", "Spirits and Such", "LOL"], "ans": 0},
-    {"cat": "One Punch Man", "diff": "Medium", "xp": 100, "q": "What hero rank does Saitama initially receive?", "opts": ["S-Class", "A-Class", "C-Class", "B-Class"], "ans": 2},
-    {"cat": "One Punch Man", "diff": "Hard", "xp": 150, "q": "What is the name of the martial arts tournament Garou's former master runs?", "opts": ["Super Fight", "Hero Hunt", "Monster Arena", "Martial Arts Festival"], "ans": 0},
-    {"cat": "One Punch Man", "diff": "Hard", "xp": 150, "q": "What is the name of the alien leader who attacks Earth in the first season?", "opts": ["Boros", "Garou", "Orochi", "Psykos"], "ans": 0},
-    {"cat": "Guess the Character", "diff": "Medium", "xp": 100, "q": "Which hero is known as the Silver Fang?", "opts": ["Atomic Samurai", "Bang", "Flashy Flash", "Child Emperor"], "ans": 1},
-    {"cat": "One Punch Man", "diff": "Hard", "xp": 150, "q": "What is the name of the organization that creates artificial heroes and monsters?", "opts": ["Neo Heroes", "House of Evolution", "Hero Association", "Monster Association"], "ans": 1},
-    {"cat": "One Punch Man", "diff": "Medium", "xp": 100, "q": "Which S-Class hero is a cyborg disciple of Bang?", "opts": ["Genos", "Metal Bat", "Drive Knight", "Puri-Puri Prisoner"], "ans": 0},
-    {"cat": "Mob Psycho Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the spirit who possesses a broccoli-shaped divine tree?", "opts": ["Dimple", "Ekubo's rival", "Mogami", "Toichiro"], "ans": 0},
-        # ===== PART 3: QUESTIONS 201-300 =====
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Mangekyo Sharingan ability allowed Obito to transport himself and others to another dimension?", "opts": ["Amaterasu", "Kamui", "Tsukuyomi", "Kotoamatsukami"], "ans": 1},
 
-    # ==================== ONE PIECE ====================
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which eye of Obito possessed the long-range version of Kamui?", "opts": ["Right eye", "Left eye", "Both eyes had identical ranges", "Neither eye"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient kingdom mentioned during the Void Century?", "opts": ["Great Kingdom", "Ancient Kingdom", "Lulusia Kingdom", "Holy Kingdom"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which eye of Obito allowed him to make physical contact with objects while using Kamui?", "opts": ["Left eye", "Right eye", "Both eyes", "Neither eye"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the giant robot that attacked Mary Geoise approximately 200 years ago?", "opts": ["Iron Giant", "Pluton", "Uranus", "Mother Flame"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was Itachi's Susanoo equipped with that made it exceptionally difficult to defeat?", "opts": ["Kusanagi and Samehada", "Totsuka Blade and Yata Mirror", "Kusanagi and Yata Mirror", "Totsuka Blade and Gunbai"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the previous user of the Ope Ope no Mi before Trafalgar Law?", "opts": ["Donquixote Rosinante", "Law's predecessor is not named", "Diez Barrels", "Vergo"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Sasuke's black-flame manipulation technique?", "opts": ["Kagutsuchi", "Amaterasu", "Susanoo", "Izanagi"], "ans": 0},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the island where the Rocks Pirates were defeated?", "opts": ["God Valley", "Hachinosu", "Fullalead", "Beehive"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique allows an Uchiha to rewrite reality at the cost of one Sharingan eye?", "opts": ["Izanami", "Izanagi", "Kotoamatsukami", "Tsukuyomi"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Who gave Shanks his famous straw hat originally?", "opts": ["Gol D. Roger", "Silvers Rayleigh", "Monkey D. Luffy", "Edward Newgate"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique was created to counter the misuse of Izanagi?", "opts": ["Izanami", "Kamui", "Kotoamatsukami", "Tsukuyomi"], "ans": 0},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the sword carried by Kozuki Oden alongside Enma?", "opts": ["Shusui", "Ame no Habakiri", "Wado Ichimonji", "Sandai Kitetsu"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who trapped Kabuto inside the Izanami loop?", "opts": ["Sasuke", "Itachi", "Naruto", "Madara"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which member of the Five Elders is associated with the title Warrior God of Finance?", "opts": ["Topman Warcury", "Ethanbaron V. Nusjuro", "Marcus Mars", "Shepherd Ju Peter"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the Uchiha police force's headquarters in Konoha?", "opts": ["Naka Shrine", "Police Headquarters", "Hokage Residence", "Academy Hall"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient weapon hidden in Wano?", "opts": ["Uranus", "Poseidon", "Pluton", "Mother Flame"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Uchiha clan member was known as the 'Shisui of the Body Flicker'?", "opts": ["Itachi", "Shisui", "Madara", "Obito"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the first known person to be called Joy Boy in the story?", "opts": ["Gol D. Roger", "A figure from the Void Century", "Nika", "Imu"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to awaken the Rinnegan in the known history of the shinobi world?", "opts": ["Madara Uchiha", "Hagoromo Otsutsuki", "Indra Otsutsuki", "Nagato"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the scientist who created the Pacifista project?", "opts": ["Caesar Clown", "Dr. Vegapunk", "Judge Vinsmoke", "Queen"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "How did Madara awaken his Rinnegan?", "opts": ["By combining Hashirama's chakra with his own", "By receiving it from Hagoromo directly", "By absorbing the Ten-Tails", "By transplanting Nagato's eyes"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which Road Poneglyph was located on Zou?", "opts": ["The one guarded by the Kozuki clan", "The one protected by the Mink Tribe", "The one hidden beneath Fish-Man Island", "The one owned by the Roger Pirates"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who originally possessed the Rinnegan that Nagato used?", "opts": ["Obito", "Madara", "Hagoromo", "Black Zetsu"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the ship used by the Roger Pirates?", "opts": ["Oro Jackson", "Polar Tang", "Red Force", "Moby Dick"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the Six Paths techniques allows the user to absorb chakra and ninjutsu?", "opts": ["Deva Path", "Preta Path", "Asura Path", "Animal Path"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which of these characters was NOT a member of the Rocks Pirates?", "opts": ["Big Mom", "Kaido", "Shiki", "Silvers Rayleigh"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Rinnegan path allows the user to summon the King of Hell?", "opts": ["Human Path", "Naraka Path", "Animal Path", "Preta Path"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the sword wielded by Dracule Mihawk?", "opts": ["Yoru", "Kokuto", "Enma", "Murakumogiri"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Nagato use to revive the people killed during his attack on Konoha?", "opts": ["Chibaku Tensei", "Rinne Rebirth", "Summoning: Impure World Reincarnation", "Creation Rebirth"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which island was destroyed by a mysterious weapon after Sabo's transmission?", "opts": ["Ohara", "Lulusia Kingdom", "God Valley", "Flevance"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that creates a miniature gravitational singularity to trap an opponent?", "opts": ["Shinra Tensei", "Chibaku Tensei", "Bansho Tenin", "Tengai Shinsei"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the Mink who possesses the Sulong form and was a member of the Roger Pirates?", "opts": ["Carrot", "Pedro", "Inuarashi", "Nekomamushi"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character used the technique called Limbo: Border Jail?", "opts": ["Obito", "Madara", "Nagato", "Sasuke"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the first known user of the Gomu Gomu no Mi before Luffy?", "opts": ["Shanks", "The previous user is unknown", "Joy Boy", "Rocks D. Xebec"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "How many Limbo shadows could Madara create after obtaining the Six Paths power?", "opts": ["One", "Two", "Four", "Six"], "ans": 2},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Roger Pirates was known as the Dark King?", "opts": ["Scopper Gaban", "Silvers Rayleigh", "Kozuki Oden", "Douglas Bullet"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Rinnegan ability did Sasuke use to exchange places with objects and people?", "opts": ["Amenotejikara", "Limbo", "Bansho Tenin", "Shinra Tensei"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the special substance used to coat ships for travelling to Fish-Man Island?", "opts": ["Seastone", "Yoroi", "Yarukiman Mangrove resin", "Adam Wood"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of Sasuke's space-time technique that opens portals between dimensions?", "opts": ["Amenotejikara", "Sasuke's Space-Time Dojutsu", "Kamui", "Kaguya's Yomotsu Hirasaka"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient giant associated with the Iron Giant in Egghead's history?", "opts": ["Oars", "Emeth", "Zunesha", "Onimaru"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first jinchuriki of the Ten-Tails?", "opts": ["Hagoromo Otsutsuki", "Hamura Otsutsuki", "Madara Uchiha", "Obito Uchiha"], "ans": 0},
 
-    # ==================== NARUTO ====================
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Hagoromo's brother?", "opts": ["Indra", "Hamura", "Ashura", "Toneri"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first person to awaken the Rinnegan in the known history of the shinobi world?", "opts": ["Nagato", "Madara Uchiha", "Hagoromo Otsutsuki", "Sasuke Uchiha"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which son of Hagoromo inherited his powerful chakra and visual prowess?", "opts": ["Ashura", "Indra", "Hamura", "Toneri"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the Uchiha who helped Itachi during the Uchiha massacre?", "opts": ["Obito Uchiha", "Shisui Uchiha", "Madara Uchiha", "Fugaku Uchiha"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which son of Hagoromo inherited his father's belief in love and cooperation?", "opts": ["Indra", "Ashura", "Hamura", "Kaguya"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the forbidden technique used by Tobirama to revive the dead?", "opts": ["Izanagi", "Edo Tensei", "Rinne Tensei", "Kuchiyose: Reanimation"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the reincarnation of Indra immediately before Sasuke?", "opts": ["Madara", "Izuna", "Obito", "Shisui"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which two chakra natures are combined to create Wood Release?", "opts": ["Water and Earth", "Earth and Fire", "Water and Wind", "Earth and Lightning"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the reincarnation of Ashura immediately before Naruto?", "opts": ["Hashirama", "Tobirama", "Hiruzen", "Minato"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first jinchuriki of the Ten-Tails?", "opts": ["Madara Uchiha", "Obito Uchiha", "Hagoromo Otsutsuki", "Kaguya Otsutsuki"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which two characters were the reincarnations of Indra and Ashura during the Warring States Period?", "opts": ["Madara and Hashirama", "Izuna and Tobirama", "Sasuke and Naruto", "Obito and Kakashi"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the sword wielded by Orochimaru that emerged from the mouth of a snake?", "opts": ["Kusanagi", "Samehada", "Kubikiribocho", "Nuibari"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who sealed Kaguya Otsutsuki using the Six Paths: Chibaku Tensei?", "opts": ["Hagoromo and Hamura", "Naruto and Sasuke", "Hagoromo and Indra", "Hashirama and Madara"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of Akatsuki was originally from the Hidden Waterfall Village?", "opts": ["Kisame Hoshigaki", "Kakuzu", "Hidan", "Deidara"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was Kaguya's original reason for coming to Earth?", "opts": ["To protect humanity", "To cultivate a chakra fruit", "To destroy the shinobi world", "To find Hagoromo"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the clan that possessed the Shikotsumyaku kekkei genkai?", "opts": ["Kaguya Clan", "Aburame Clan", "Inuzuka Clan", "Yuki Clan"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Kaguya's clan partner who arrived on Earth with her?", "opts": ["Isshiki Otsutsuki", "Momoshiki Otsutsuki", "Kinshiki Otsutsuki", "Urashiki Otsutsuki"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the Mangekyo Sharingan that Kakashi used?", "opts": ["Shisui Uchiha", "Obito Uchiha", "Madara Uchiha", "Izuna Uchiha"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What form did Isshiki Otsutsuki take after being betrayed by Kaguya?", "opts": ["He became a Ten-Tails jinchuriki", "He secretly entered Jigen's body", "He became a Karma seal", "He merged with the God Tree"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the sword used by the Seven Ninja Swordsmen of the Mist that can absorb chakra?", "opts": ["Kabutowari", "Samehada", "Kiba", "Hiramekarei"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of Isshiki's ability to shrink himself and objects?", "opts": ["Daikokuten", "Sukunahikona", "Amenominaka", "Yomotsu Hirasaka"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first person to become the jinchuriki of the Nine-Tails?", "opts": ["Kushina Uzumaki", "Mito Uzumaki", "Naruto Uzumaki", "Rin Nohara"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which ability allowed Isshiki to store shrunken objects in a dimension where time does not flow?", "opts": ["Sukunahikona", "Daikokuten", "Kamui", "Amenotejikara"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which of the following techniques is associated with the Uzumaki clan's sealing arts?", "opts": ["Adamantine Sealing Chains", "Flying Thunder God", "Shadow Possession", "Particle Style"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Otsutsuki possessed the ability to absorb and return chakra-based attacks through his Rinnegan?", "opts": ["Momoshiki", "Isshiki", "Kinshiki", "Urashiki"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first reincarnation of Asura Otsutsuki shown in the series?", "opts": ["Hashirama Senju", "Naruto Uzumaki", "Madara Uchiha", "Indra Otsutsuki"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Momoshiki's partner before he absorbed him?", "opts": ["Kinshiki", "Isshiki", "Urashiki", "Toneri"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the Third Kazekage's unique kekkei genkai?", "opts": ["Magnet Release", "Lava Release", "Scorch Release", "Explosion Release"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character destroyed the Tenseigan during The Last: Naruto the Movie?", "opts": ["Naruto", "Sasuke", "Hinata", "Toneri"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which two brothers were known as the Gold and Silver Brothers?", "opts": ["Indra and Asura", "Kinkaku and Ginkaku", "Hashirama and Tobirama", "Fugaku and Madara"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Otsutsuki was responsible for creating the Tenseigan through the Byakugan and Hamura's chakra?", "opts": ["Toneri", "Momoshiki", "Isshiki", "Kaguya"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the technique used by the Third Hokage to seal Orochimaru's arms?", "opts": ["Reaper Death Seal", "Dead Demon Consuming Seal", "Four Symbols Seal", "Eight Trigrams Seal"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Minato use to teleport himself and others using marked locations?", "opts": ["Flying Thunder God Technique", "Body Flicker Technique", "Reverse Summoning", "Space-Time Barrier"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Hyuga clan was the father of Neji?", "opts": ["Hiashi Hyuga", "Hizashi Hyuga", "Hanabi Hyuga", "Tokuma Hyuga"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who developed the Flying Thunder God Technique?", "opts": ["Minato Namikaze", "Tobirama Senju", "Hashirama Senju", "Hiruzen Sarutobi"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the forbidden Uchiha technique that rewrites reality at the cost of an eye?", "opts": ["Izanagi", "Izanami", "Tsukuyomi", "Kotoamatsukami"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Hokage developed the Shadow Clone Technique?", "opts": ["Tobirama Senju", "Hashirama Senju", "Hiruzen Sarutobi", "Minato Namikaze"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which tailed beast is known as the Four-Tails?", "opts": ["Son Goku", "Kokuo", "Saiken", "Chomei"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Tobirama develop to revive the dead as controlled combatants?", "opts": ["Reaper Death Seal", "Summoning: Impure World Reincarnation", "Creation Rebirth", "Dead Soul Technique"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the leader of the Hidden Rain Village during the original Akatsuki's early formation?", "opts": ["Hanzo", "Nagato", "Yahiko", "Konan"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Hokage created the Tandem Paper Bomb technique?", "opts": ["Hashirama", "Tobirama", "Hiruzen", "Minato"], "ans": 1},
 
-    # ==================== BLEACH ====================
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the sealing technique Minato used to divide Kurama's chakra into two halves?", "opts": ["Eight Trigrams Sealing Style", "Dead Demon Consuming Seal", "Four Symbols Seal", "Reaper Death Seal"], "ans": 1},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the original Gotei 13 founder and first Captain-Commander?", "opts": ["Shunsui Kyoraku", "Genryusai Shigekuni Yamamoto", "Jushiro Ukitake", "Chojiro Sasakibe"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which half of Kurama was sealed inside Naruto at birth?", "opts": ["Yin half", "Yang half", "Both halves equally", "Neither half"], "ans": 1},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What was the original name of the Soul King?", "opts": ["Reio", "Yhwach", "The Soul King's personal name is not revealed", "Ichibe Hyosube"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which half of Kurama was sealed inside Minato?", "opts": ["Yin half", "Yang half", "Both halves equally", "Neither half"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Squad Zero member is known as the creator of the Zanpakuto?", "opts": ["Tenjiro Kirinji", "Oetsu Nimaiya", "Senjumaru Shutara", "Kirio Hikifune"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Minato's father?", "opts": ["Never revealed", "Jiraiya", "Hiruzen Sarutobi", "Danzo Shimura"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of Yhwach's Schrift?", "opts": ["The Almighty", "The Balance", "The Antithesis", "The Miracle"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan did Tsunade descend from through her grandmother?", "opts": ["Uchiha", "Uzumaki", "Hyuga", "Nara"], "ans": 1},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the Hogyoku created by Kisuke Urahara?", "opts": ["Sosuke Aizen", "Kisuke Urahara", "Mayuri Kurotsuchi", "Yoruichi Shihouin"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was Tsunade's younger brother?", "opts": ["Nawaki", "Dan", "Sakumo", "Kagami"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of Ichibe Hyosube's Zanpakuto?", "opts": ["Ichimonji", "Benihime", "Shirafude", "Katen Kyokotsu"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Tsunade's lover who died during the Second Great Ninja War?", "opts": ["Dan Kato", "Nawaki", "Sakumo Hatake", "Chiyo"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Quincy was known as the B during the Thousand-Year Blood War?", "opts": ["Jugram Haschwalth", "Bazz-B", "Bambietta Basterbine", "Askin Nakk Le Vaar"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which medical technique allows Tsunade to continuously regenerate her cells by releasing stored chakra?", "opts": ["Creation Rebirth", "Mystical Palm Technique", "Strength of a Hundred Seal", "Chakra Scalpel"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the first Espada in Aizen's army?", "opts": ["Coyote Starrk", "Baraggan Louisenbairn", "Tier Harribel", "Ulquiorra Cifer"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the seal on Tsunade's forehead?", "opts": ["Strength of a Hundred Seal", "Eight Trigrams Seal", "Cursed Seal of Heaven", "Diamond Seal"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the original captain of Squad 11 before Kenpachi Zaraki?", "opts": ["Retsu Unohana", "Sajin Komamura", "Ikkaku Madarame", "Yachiru Kusajishi"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which member of the Akatsuki was known as the 'Artist of the Explosion'?", "opts": ["Sasori", "Deidara", "Kakuzu", "Hidan"], "ans": 1},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of Uryu Ishida's Schrift?", "opts": ["The Antithesis", "The Balance", "The Deathdealing", "The Fear"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Deidara's explosive clay technique that created a microscopic bomb?", "opts": ["C4 Karura", "C3", "C2 Dragon", "C0"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character is the founder of the Shinigami Research and Development Institute?", "opts": ["Kisuke Urahara", "Mayuri Kurotsuchi", "Oetsu Nimaiya", "Senjumaru Shutara"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Deidara's final self-destructive explosion technique?", "opts": ["C0", "C4 Karura", "C3", "C2 Dragon"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Urahara to seal Aizen after his evolution?", "opts": ["Kido: Bakudo 99", "A special seal created by Urahara", "Hado 90: Kurohitsugi", "The Almighty"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Akatsuki member was the original owner of the Third Kazekage puppet?", "opts": ["Sasori", "Chiyo", "Kankuro", "Deidara"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Squad Zero member is responsible for the Royal Guard's healing hot springs?", "opts": ["Oetsu Nimaiya", "Tenjiro Kirinji", "Ichibe Hyosube", "Kirio Hikifune"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which puppet did Sasori use as his own body?", "opts": ["Hiruko", "Third Kazekage", "Sasori of the Red Sand", "Mother and Father"], "ans": 2},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that allows Shunsui Kyoraku's Bankai to affect everyone around him?", "opts": ["Katen Kyokotsu: Karamatsu Shinju", "Kageoni", "Irooni", "Bushogoma"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was Sasori's nickname?", "opts": ["Sasori of the Red Sand", "The Puppet Master", "The Sand Demon", "The Crimson Scorpion"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first person to become a Visored?", "opts": ["Shinji Hirako", "Hiyori Sarugaki", "Kensei Muguruma", "The series does not identify a single first Visored"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Akatsuki member could use five different chakra natures through stolen hearts?", "opts": ["Kakuzu", "Hidan", "Sasori", "Kisame"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the Quincy technique that allows the user to gather Reishi from the environment?", "opts": ["Blut Vene", "Hirenkyaku", "Ransotengai", "Sklaverei"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "How many hearts could Kakuzu maintain in his body at once?", "opts": ["Three", "Four", "Five", "Six"], "ans": 2},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Espada possesses the aspect of death known as solitude?", "opts": ["Ulquiorra Cifer", "Coyote Starrk", "Nnoitra Gilga", "Zommari Rureaux"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Akatsuki member worshipped the deity Jashin?", "opts": ["Kakuzu", "Hidan", "Deidara", "Sasori"], "ans": 1},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the Quincy king's elite personal guard?", "opts": ["Sternritter", "Schutzstaffel", "Wandenreich", "Letzt Stil"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Hidan's ritual technique?", "opts": ["Curse Technique: Death Controlling Possessed Blood", "Reaper Death Seal", "Soul Removal Technique", "Dead Demon Consuming Seal"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Gotei 13 was responsible for creating the Gikon technology used to separate souls from bodies?", "opts": ["Kisuke Urahara", "Mayuri Kurotsuchi", "Kurotsuchi Nemu", "The technology's individual creator is not clearly established"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Akatsuki member wielded the Samehada sword?", "opts": ["Kisame Hoshigaki", "Zabuza Momochi", "Suigetsu Hozuki", "Mangetsu Hozuki"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the original form of Ichigo's Zanpakuto revealed during the Thousand-Year Blood War?", "opts": ["Zangetsu", "Tensa Zangetsu", "Zangetsu and the Hollow power as his true Zanpakuto", "Engetsu"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the original owner of Samehada before Kisame?", "opts": ["Fuguki Suikazan", "Zabuza Momochi", "Mangetsu Hozuki", "Chojuro"], "ans": 0},
 
-    # ==================== BIG 3 CROSSOVER ====================
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which member of the Seven Ninja Swordsmen wielded the Kubikiribocho?", "opts": ["Zabuza Momochi", "Kisame Hoshigaki", "Jinin Akebino", "Jinpachi Munashi"], "ans": 0},
 
-    {"cat": "Big 3: Extreme", "diff": "Hard", "xp": 150, "q": "Which of these characters was NOT trained by a member of the legendary Sannin?", "opts": ["Naruto Uzumaki", "Sasuke Uchiha", "Sakura Haruno", "Kakashi Hatake"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which sword of the Seven Ninja Swordsmen can absorb and store lightning chakra?", "opts": ["Kiba", "Samehada", "Kabutowari", "Nuibari"], "ans": 0},
 
-    {"cat": "Big 3: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which of these abilities is NOT a form of spiritual or supernatural power in its respective series?", "opts": ["Haki", "Chakra", "Reiatsu", "Nen"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which sword of the Seven Ninja Swordsmen is known as the Sewing Needle?", "opts": ["Nuibari", "Kiba", "Hiramekarei", "Shibuki"], "ans": 0},
 
-    {"cat": "Big 3: Extreme", "diff": "Hard", "xp": 150, "q": "Which character has a canonical connection to the title 'World's Strongest Swordsman'?", "opts": ["Kisuke Urahara", "Dracule Mihawk", "Kakashi Hatake", "Byakuya Kuchiki"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which sword is known as the Bluntsword and consists of a hammer and axe?", "opts": ["Kabutowari", "Shibuki", "Nuibari", "Hiramekarei"], "ans": 0},
 
-    {"cat": "Big 3: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which series features a historical period called the Void Century?", "opts": ["Naruto", "Bleach", "One Piece", "All three"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which member of the Seven Ninja Swordsmen wielded Hiramekarei?", "opts": ["Chojuro", "Zabuza", "Kisame", "Jinpachi"], "ans": 0},
 
-    {"cat": "Big 3: Extreme", "diff": "Hard", "xp": 150, "q": "Which character is associated with the title 'God of Shinobi'?", "opts": ["Madara Uchiha", "Hashirama Senju", "Hagoromo Otsutsuki", "Hiruzen Sarutobi"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the Kaguya clan's unique bone-manipulation Kekkei Genkai?", "opts": ["Shikotsumyaku", "Kekkei Genkai: Ice Release", "Jugo's Clan Curse", "Wood Release"], "ans": 0},
 
-    {"cat": "Big 3: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which of these characters has a power that can manipulate the future?", "opts": ["Yhwach", "Madara Uchiha", "Kaido", "Aizen"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character was the last known surviving member of the Kaguya clan?", "opts": ["Kimimaro", "Haku", "Jugo", "Suigetsu"], "ans": 0},
 
-    {"cat": "Big 3: Extreme", "diff": "Hard", "xp": 150, "q": "Which character was responsible for training the main protagonist in the art of swordsmanship during a major timeskip?", "opts": ["Silvers Rayleigh", "Jiraiya", "Kisuke Urahara", "All three trained their respective protagonists in different ways"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan was responsible for the unique ability to manipulate shadows?", "opts": ["Nara", "Yamanaka", "Akimichi", "Aburame"], "ans": 0},
 
-    {"cat": "Big 3: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which of these characters has been a captain in their respective organization?", "opts": ["Roronoa Zoro", "Kakashi Hatake", "Byakuya Kuchiki", "Both B and C"], "ans": 3},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan specializes in mind-transfer techniques?", "opts": ["Yamanaka", "Nara", "Akimichi", "Inuzuka"], "ans": 0},
 
-    {"cat": "Big 3: Extreme", "diff": "Hard", "xp": 150, "q": "Which of these characters was born into a clan with a famous inherited eye ability?", "opts": ["Sasuke Uchiha", "Nico Robin", "Ichigo Kurosaki", "All three"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan uses insects as part of its fighting style?", "opts": ["Aburame", "Nara", "Yamanaka", "Hyuga"], "ans": 0},
 
-    {"cat": "Big 3: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which organization is responsible for maintaining the balance of souls in Bleach?", "opts": ["Wandenreich", "Gotei 13", "Xcution", "Espada"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the special insect species Shino's clan commonly uses?", "opts": ["Kikaichu", "Rinkaichu", "Nano Bugs", "Kumogakure Beetles"], "ans": 0},
 
-    # ==================== EXTRA EXTREME BIG 3 ====================
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which insect species was used by Torune Aburame?", "opts": ["Rinkaichu", "Kikaichu", "Nano Bugs", "Kumogakure Beetles"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the doctor who treated Nami during the Drum Island arc?", "opts": ["Dr. Hiriluk", "Dr. Kureha", "Dr. Hogback", "Dr. Vegapunk"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Hyuga technique blocks an opponent's chakra points using precise strikes?", "opts": ["Gentle Fist", "Eight Gates", "Shadow Imitation", "Chakra Scalpel"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the island where the Roger Pirates discovered the final Poneglyph?", "opts": ["Zou", "Fish-Man Island", "Laugh Tale", "Skypiea"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "How many chakra points does the Byakugan allow a user to see in the human body?", "opts": ["361", "365", "360", "108"], "ans": 0},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first known user of the Yami Yami no Mi?", "opts": ["Marshall D. Teach", "Thatch", "The previous user is unknown", "Edward Newgate"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Hyuga technique creates a rotating defensive chakra barrier?", "opts": ["Eight Trigrams Palms Revolving Heaven", "Eight Trigrams Sixty-Four Palms", "Gentle Fist Art", "Eight Trigrams Vacuum Palm"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the giant who guarded the gates of Enies Lobby?", "opts": ["Oimo", "Kashii", "Both Oimo and Kashii", "Hajrudin"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the leader of the Hyuga clan during Naruto's childhood?", "opts": ["Hiashi Hyuga", "Hizashi Hyuga", "Neji Hyuga", "Hanabi Hyuga"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the forbidden technique used by Danzo to control Shisui's eye?", "opts": ["Kotoamatsukami", "Izanagi", "Izanami", "Tsukuyomi"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was Neji's father?", "opts": ["Hizashi Hyuga", "Hiashi Hyuga", "Hiruzen Sarutobi", "Kizashi Haruno"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Hokage created the Shadow Clone Technique?", "opts": ["Hashirama Senju", "Tobirama Senju", "Hiruzen Sarutobi", "Minato Namikaze"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Neji use to strike all 64 chakra points of an opponent?", "opts": ["Eight Trigrams Sixty-Four Palms", "Eight Trigrams Palms Revolving Heaven", "Vacuum Palm", "Gentle Step Twin Lion Fists"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the organization that Orochimaru founded to conduct experiments?", "opts": ["Root", "Sound Village", "Akatsuki", "Kara"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character created the Rasengan?", "opts": ["Minato Namikaze", "Jiraiya", "Tobirama Senju", "Kakashi Hatake"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "Which character was the first known Substitute Soul Reaper before Ichigo?", "opts": ["Kugo Ginjo", "Kisuke Urahara", "Isshin Kurosaki", "The title's earlier history is not fully established"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who completed the addition of elemental nature transformation to the Rasengan by creating the Wind Style: Rasenshuriken?", "opts": ["Naruto Uzumaki", "Minato Namikaze", "Kakashi Hatake", "Jiraiya"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Mayuri to control his modified body?", "opts": ["Konjiki Ashisogi Jizo", "Shikai", "Body modification techniques", "Kido"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which nature transformation did Naruto add to the Rasengan?", "opts": ["Wind Release", "Lightning Release", "Fire Release", "Water Release"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "Which Quincy was known as the X, representing the X-Axis?", "opts": ["Lille Barro", "Gerard Valkyrie", "Pernida Parnkgjas", "Askin Nakk Le Vaar"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Kakashi use to create a concentrated lightning blade?", "opts": ["Chidori", "Rasengan", "Raikiri: Kamui", "Lightning Release: False Darkness"], "ans": 0},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient weapon associated with Shirahoshi?", "opts": ["Pluton", "Uranus", "Poseidon", "Neptune"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the other name commonly used for Kakashi's Chidori?", "opts": ["Raikiri", "Kirin", "Raiden", "Lightning Fang"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which character was the original wielder of the Kusanagi sword Orochimaru used?", "opts": ["Sasuke Uchiha", "Orochimaru", "The sword's earlier owner is not established", "Itachi Uchiha"], "ans": 2},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Sasuke use to summon a massive lightning strike from the natural atmosphere?", "opts": ["Kirin", "Chidori Nagashi", "Amaterasu", "Kagutsuchi"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Sternritter represents the letter M?", "opts": ["Gerard Valkyrie", "Mask De Masculine", "Gremmy Thoumeaux", "Meninas McAllon"], "ans": 0},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Jiraiya use to enter Sage Mode?", "opts": ["Toad Sage Mode", "Snake Sage Mode", "Six Paths Sage Mode", "Perfect Sage Mode of Slugs"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the former owner of the Mera Mera no Mi before Ace?", "opts": ["Sabo", "The previous user is unknown", "Portgas D. Rouge", "Monkey D. Dragon"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Where did Naruto learn to use Sage Mode?", "opts": ["Mount Myoboku", "Ryuchi Cave", "Shikkotsu Forest", "Valley of the End"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which of the following is the name of the Sage Mode used by Kabuto?", "opts": ["Toad Sage Mode", "Snake Sage Mode", "Slug Sage Mode", "Six Paths Sage Mode"], "ans": 1},
+{"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which sage taught Naruto how to gather natural energy?", "opts": ["Fukasaku", "Shima", "Gamabunta", "Gamamaru"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the ability used by Pernida Parnkgjas?", "opts": ["The Compulsory", "The Miracle", "The Deathdealing", "The Fear"], "ans": 0},
+    # One Piece
+    {"q": "What is the ultimate treasure sought by pirates in One Piece called?", "options": ["All Blue", "One Piece", "Poneglyph", "Ancient Weapon"], "ans": 1, "cat": "one piece", "diff": "Easy"},
+    {"q": "What type of Devil Fruit did Luffy accidentally eat?", "options": ["Logia", "Zoan", "Paramecia (Gomu Gomu no Mi)", "Mythical Zoan"], "ans": 2, "cat": "one piece", "diff": "Easy"},
+    {"q": "Who is the swordsman of the Straw Hat Pirates aiming to be the world's greatest?", "options": ["Sanji", "Zoro", "Brook", "Shanks"], "ans": 1, "cat": "one piece", "diff": "Easy"},
+    {"q": "What is the name of Sanji's royal family lineage?", "options": ["Donquixote Family", "Vinsmoke Family", "Kozuki Family", "Charlotte Family"], "ans": 1, "cat": "one piece", "diff": "Medium"},
+    {"q": "Which Marine Admiral possesses the Magma-Magma fruit powers?", "options": ["Aokiji", "Kizaru", "Akainu", "Fujitora"], "ans": 2, "cat": "one piece", "diff": "Medium"},
+    # ONE PIECE — FRESH QUESTION BANK (100 QUESTIONS)
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the special tree whose wood was used to build the Thousand Sunny?", "opts": ["Treasure Tree Adam", "Sunlight Tree Eve", "Yggdrasil", "Giant Tree of Elbaf"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which sword did Zoro receive from the village of Shimotsuki?", "opts": ["Sandai Kitetsu", "Wado Ichimonji", "Yubashiri", "Shusui"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Who was the first known user of the Flying Thunder God Technique?", "opts": ["Minato Namikaze", "Tobirama Senju", "Hiruzen Sarutobi", "Kakashi Hatake"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who gave Zoro the Sandai Kitetsu?", "opts": ["Ipponmatsu", "Tashigi", "Kuina", "Koshiro"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character's Bankai is named Kannonbiraki Benihime Aratame?", "opts": ["Kisuke Urahara", "Shunsui Kyoraku", "Retsu Unohana", "Shinji Hirako"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the grade of Mihawk's sword Yoru?", "opts": ["Great Grade", "Skillful Grade", "Supreme Grade", "Ordinary Grade"], "ans": 2},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which of the following is NOT one of the three ancient weapons?", "opts": ["Pluton", "Poseidon", "Uranus", "Mother Flame"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which sword did Ryuma originally wield before it became Zoro's?", "opts": ["Enma", "Shusui", "Yoru", "Ame no Habakiri"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the clan that produced the first jinchuriki of the Nine-Tails?", "opts": ["Senju Clan", "Uzumaki Clan", "Uchiha Clan", "Hyuga Clan"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who is the creator of the Wado Ichimonji?", "opts": ["Shimotsuki Kozaburo", "Tenguyama Hitetsu", "Kozuki Sukiyaki", "Koushirou"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "Which character possesses the Schrift known as The Miracle?", "opts": ["Gerard Valkyrie", "Lille Barro", "Jugram Haschwalth", "Pernida Parnkgjas"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which of these is NOT one of the 21 Great Grade swords?", "opts": ["Enma", "Wado Ichimonji", "Shusui", "Yoru"], "ans": 3},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the giant elephant that carries the island of Zou?", "opts": ["Zunesha", "Oars", "Nika", "Emeth"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the technique Zoro used against King that involved his three swords being coated in Conqueror's Haki?", "opts": ["Sanzen Sekai", "King of Hell: Three Sword Serpent", "Ashura: Ichibugin", "Oni Giri"], "ans": 1},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which character used the Reaper Death Seal to seal the Nine-Tails during its attack on Konoha?", "opts": ["Hiruzen Sarutobi", "Minato Namikaze", "Tobirama Senju", "Kushina Uzumaki"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Worst Generation has the epithet 'Roar of the Sea'?", "opts": ["Eustass Kid", "Scratchmen Apoo", "Capone Bege", "Basil Hawkins"], "ans": 0},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Ulquiorra when he releases his second form?", "opts": ["Resurreccion: Murcielago", "Segunda Etapa", "Gran Rey Cero", "Lanza del Relampago"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Eustass Kid's Devil Fruit?", "opts": ["Jiki Jiki no Mi", "Giro Giro no Mi", "Buki Buki no Mi", "Pamu Pamu no Mi"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient city associated with the Poneglyphs on Jaya?", "opts": ["Shandora", "Alubarna", "Birkan", "Ohara"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Worst Generation member is also known as the 'Magician'?", "opts": ["X Drake", "Basil Hawkins", "Urouge", "Apoo"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the Seven Ninja Swordsmen's Kubikiribocho?", "opts": ["Zabuza Momochi", "Juzo Biwa", "Mangetsu Hozuki", "Kisame Hoshigaki"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Urouge's homeland?", "opts": ["Sky Island", "Birkan", "Weatheria", "Skypiea"], "ans": 1},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the Quincy king's son in the Thousand-Year Blood War arc?", "opts": ["Jugram Haschwalth", "Uryu Ishida", "Bazz-B", "Yhwach has no confirmed biological son in the story"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Worst Generation pirate was formerly a Marine rear admiral?", "opts": ["Killer", "X Drake", "Capone Bege", "Jewelry Bonney"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character was the first known user of the Bara Bara no Mi?", "opts": ["Buggy", "The previous user is unknown", "Shanks", "Crocodile"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of X Drake's secret Marine organization?", "opts": ["SWORD", "CIPHER POL", "Aegis Zero", "G-5"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that allows the user to teleport through dimensions using Kamui?", "opts": ["Flying Thunder God", "Kamui", "Amenotejikara", "Yomotsu Hirasaka"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which organization did Rob Lucci belong to before joining CP0?", "opts": ["SWORD", "CP9", "G-1", "Revolutionary Army"], "ans": 1},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which Espada has the aspect of death known as nothingness?", "opts": ["Ulquiorra Cifer", "Coyote Starrk", "Nnoitra Gilga", "Szayelaporro Granz"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the former leader of CP9 before Spandam?", "opts": ["Rob Lucci", "Spandine", "Blueno", "Kaku"], "ans": 1},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the ship that carried the Straw Hats through the Grand Line before the Thousand Sunny?", "opts": ["Going Merry", "Oro Jackson", "Red Force", "Polar Tang"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Rokushiki technique allows its user to move at extremely high speeds?", "opts": ["Tekkai", "Geppo", "Soru", "Rankyaku"], "ans": 2},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first person to master the Eight Inner Gates?", "opts": ["Might Guy", "Might Duy", "Rock Lee", "Kakashi Hatake"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Rokushiki technique creates flying air blades?", "opts": ["Shigan", "Rankyaku", "Kami-e", "Rokuogan"], "ans": 1},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "Which member of Squad Zero is known as the Great Weave Guard?", "opts": ["Senjumaru Shutara", "Kirio Hikifune", "Oetsu Nimaiya", "Tenjiro Kirinji"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which CP9 member developed the technique known as Rokuogan?", "opts": ["Kaku", "Jabra", "Rob Lucci", "Blueno"], "ans": 2},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the former Warlord who was also the ruler of Alabasta?", "opts": ["Crocodile", "Nefertari Cobra", "Donquixote Doflamingo", "Gecko Moria"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the island where the World Government's judicial headquarters is located?", "opts": ["Enies Lobby", "Impel Down", "Marineford", "Mary Geoise"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which of these characters was NOT a member of the original Team Minato?", "opts": ["Kakashi Hatake", "Obito Uchiha", "Rin Nohara", "Might Guy"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which sea train station is located closest to Enies Lobby?", "opts": ["Blue Station", "Shift Station", "Kingbull Station", "Sea Train Terminal"], "ans": 1},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Aizen to manipulate the five senses?", "opts": ["Kyoka Suigetsu", "Kurohitsugi", "Kanzen Saimin", "Sakanade"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the former owner of the Kaku's Devil Fruit?", "opts": ["It was never previously owned; Kaku ate it", "Rob Lucci", "Spandam", "Jabra"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "Which member of the Straw Hat crew has the epithet 'Soul King'?", "opts": ["Franky", "Brook", "Jinbe", "Usopp"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the model of Kaku's Devil Fruit?", "opts": ["Giraffe", "Brachiosaurus", "Pteranodon", "Allosaurus"], "ans": 0},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "What was the name of the Third Raikage's son?", "opts": ["A", "B", "C", "Darui"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Devil Fruit allows Blueno to create doors on virtually any surface?", "opts": ["Door Door Fruit", "Warp Warp Fruit", "Pocket Pocket Fruit", "Mirror Mirror Fruit"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "Which of these characters was NOT a member of the original Gotei 13 shown in the Thousand-Year Blood War arc?", "opts": ["Yamamoto", "Unohana", "Ukitake", "Kisuke Urahara"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient kingdom's archaeologist who was Nico Robin's mother?", "opts": ["Olvia", "Bell-mère", "Clover", "Lily"], "ans": 0},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character is known as the King of the Underworld in One Piece?", "opts": ["Silvers Rayleigh", "Stussy", "Du Feld", "Morgans"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the head archaeologist of Ohara?", "opts": ["Professor Clover", "Professor Vegapunk", "Professor Hiriluk", "Professor Tsukimi"], "ans": 0},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "Which tailed beast is sealed inside Han?", "opts": ["Five-Tails", "Six-Tails", "Four-Tails", "Seven-Tails"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Marine ordered the Buster Call on Ohara?", "opts": ["Akainu", "Aokiji", "Sengoku", "Kizaru"], "ans": 2},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character is the original wielder of the sword Nozarashi?", "opts": ["Kenpachi Zaraki", "Retsu Unohana", "Yachiru Kusajishi", "Ikkaku Madarame"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the Marine vice admiral who secretly helped Robin escape Ohara?", "opts": ["Jaguar D. Saul", "Monkey D. Garp", "Kuzan", "Tsuru"], "ans": 2},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the giant tree on Elbaf that is central to its mythology?", "opts": ["Treasure Tree Adam", "Sunlight Tree Eve", "Yggdrasil", "Shandora Tree"], "ans": 2},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the giant who became Robin's friend on Ohara?", "opts": ["Hajrudin", "Jaguar D. Saul", "Oimo", "Kashii"], "ans": 1},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Akatsuki was known as the Puppet Master?", "opts": ["Sasori", "Deidara", "Hidan", "Kakuzu"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which island was destroyed by the Buster Call that Robin survived as a child?", "opts": ["Ohara", "God Valley", "Flevance", "Jaya"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that Uryu uses to reverse the effects of an event between two points?", "opts": ["Antithesis", "Blut Vene", "Letzt Stil", "Hirenkyaku"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the poneglyph that records the history of the Void Century?", "opts": ["Road Poneglyph", "Rio Poneglyph", "Historical Poneglyph", "Blue Poneglyph"], "ans": 1},
 
-    {"cat": "One Piece: Deep Lore", "diff": "Hard", "xp": 150, "q": "Who was the first person to reach Laugh Tale alongside Gol D. Roger?", "opts": ["Silvers Rayleigh", "Scopper Gaban", "Kozuki Oden", "All surviving Roger Pirates present on the final voyage"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "How many Road Poneglyphs are needed to locate Laugh Tale?", "opts": ["Two", "Three", "Four", "Five"], "ans": 2},
 
-    {"cat": "Naruto: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Kaguya to shift between dimensions?", "opts": ["Amenominaka", "Kamui", "Amenotejikara", "Izanagi"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character is known as the 'Man Marked by Flames'?", "opts": ["Jaguar D. Saul", "Scopper Gaban", "Unknown identity", "Monkey D. Dragon"], "ans": 2},
 
-    {"cat": "Bleach: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which member of the Espada is known as the Octava Espada?", "opts": ["Szayelaporro Granz", "Aaroniero Arruruerie", "Zommari Rureaux", "Nnoitra Gilga"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was responsible for teaching the Kozuki clan how to read and write Poneglyphs?", "opts": ["Kozuki Sukiyaki", "Kozuki Oden", "Kozuki Toki", "Kozuki Momonosuke"], "ans": 0},
 
-    {"cat": "One Piece: Extreme", "diff": "Hard", "xp": 150, "q": "What was the name of the doctor who accompanied the Roger Pirates during their final voyage?", "opts": ["Crocus", "Dr. Hiriluk", "Dr. Kureha", "Dr. Vegapunk"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient weapon hidden in Wano?", "opts": ["Uranus", "Poseidon", "Pluton", "Noah"], "ans": 2},
 
-    {"cat": "Naruto: Deep Lore", "diff": "Hard", "xp": 150, "q": "Which character was the first known user of the Truth-Seeking Orbs in the series?", "opts": ["Hagoromo Otsutsuki", "Madara Uchiha", "Obito Uchiha", "Naruto Uzumaki"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Where is the ancient weapon Pluton believed to be located?", "opts": ["Under Wano", "Under Alabasta", "Inside Fish-Man Island", "At Laugh Tale"], "ans": 0},
 
-    {"cat": "Bleach: Extreme", "diff": "Hard", "xp": 150, "q": "What is the name of the Schrift possessed by Jugram Haschwalth?", "opts": ["The Balance", "The Almighty", "The Antithesis", "The Miracle"], "ans": 0},
-        # 301–325: One Piece
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ship that carried the Roger Pirates to Laugh Tale?", "opts": ["Oro Jackson", "Thousand Sunny", "Red Force", "Moby Dick"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Roger Pirates was known as the Dark King?", "opts": ["Scopper Gaban", "Silvers Rayleigh", "Kozuki Oden", "Douglas Bullet"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient weapon hidden beneath Alabasta?", "opts": ["Uranus", "Poseidon", "Pluton", "Mother Flame"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first known user of the Gomu Gomu no Mi before Luffy?", "opts": ["Shanks", "Gol D. Roger", "Joy Boy", "Its previous owner is unknown"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which island was the location of the Ohara incident?", "opts": ["West Blue", "North Blue", "South Blue", "East Blue"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the scientist who created the Pacifista?", "opts": ["Caesar Clown", "Dr. Vegapunk", "Queen", "Judge Vinsmoke"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Road Poneglyph was located on Zou?", "opts": ["The one held by Big Mom", "The one held by Kaido", "The one guarded by the Minks", "The one hidden in Fish-Man Island"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who gave Shanks his famous straw hat?", "opts": ["Gol D. Roger", "Silvers Rayleigh", "Whitebeard", "Gol D. Roger"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the giant elephant carrying Zou?", "opts": ["Zunesha", "Surume", "Laboon", "Nola"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the captain of the Rumbar Pirates?", "opts": ["Brook", "Yorki", "Crocus", "Calico Yorki"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which CP9 member ate the Neko Neko no Mi, Model: Leopard?", "opts": ["Kaku", "Blueno", "Rob Lucci", "Jabra"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the island where Ace and Luffy grew up?", "opts": ["Dawn Island", "Goa Island", "Foosha Island", "Mount Colubo"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was responsible for giving Luffy the scar beneath his left eye?", "opts": ["Ace", "Luffy himself", "Sabo", "Garp"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the giant skull-shaped island where Kaido established his base?", "opts": ["Punk Hazard", "Onigashima", "Whole Cake Island", "Hachinosu"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Five Elders is associated with the title Saint Jaygarcia Saturn?", "opts": ["Warrior God of Finance", "Warrior God of Justice", "Warrior God of Science and Defense", "Warrior God of Agriculture"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient kingdom's enemy, according to the history revealed through the Poneglyphs?", "opts": ["The Ancient Kingdom's name is unknown", "The World Government", "The Lunarians", "The Great Kingdom of Elbaf"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the original owner of the Yami Yami no Mi before Blackbeard?", "opts": ["Whitebeard", "Its previous owner is unknown", "Rocks D. Xebec", "Shiki"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Straw Hats was trained by Dracule Mihawk during the two-year timeskip?", "opts": ["Sanji", "Usopp", "Zoro", "Franky"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ability that allows a person to hear the voices of all things?", "opts": ["Voice of All Things", "Mantra", "Observation Haki", "Conqueror's Haki"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the ruler of Dressrosa before Doflamingo took control?", "opts": ["Riku Doldo III", "Kyros", "King Elizabello II", "Donquixote Homing"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was revealed to be the mother of Jewelry Bonney?", "opts": ["Ginny", "Conney", "Lily", "Shakuyaku"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the giant robot discovered on Egghead?", "opts": ["Emeth", "General Franky", "Pluton", "Iron Giant Atlas"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which ancient weapon is associated with Shirahoshi?", "opts": ["Pluton", "Poseidon", "Uranus", "Mother Flame"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first person to join Luffy's crew?", "opts": ["Nami", "Usopp", "Zoro", "Sanji"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the prison beneath Impel Down's Level 5?", "opts": ["Newkama Land", "Level 5.5", "Level 6", "Eternal Hell"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who revealed the location of Pluton to Robin?", "opts": ["Kozuki Sukiyaki", "Momonosuke", "Oden", "Kaido"], "ans": 0},
 
-    # 326–350: Naruto
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first known human to awaken the Rinnegan?", "opts": ["Hagoromo Otsutsuki", "Madara Uchiha", "Sasuke Uchiha", "Indra Otsutsuki"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Minato use to teleport away from the Ten-Tails' Tailed Beast Bomb?", "opts": ["Flying Thunder God Technique", "Body Flicker Technique", "Kamui", "Reverse Summoning"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the original leader of Akatsuki before Yahiko's death?", "opts": ["Nagato", "Yahiko", "Konan", "Obito"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following is NOT one of the Six Paths of Pain?", "opts": ["Deva Path", "Asura Path", "Sage Path", "Human Path"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the forbidden technique used by the Second Hokage to summon the dead?", "opts": ["Reaper Death Seal", "Edo Tensei", "Impure World Reincarnation", "Living Corpse Reincarnation"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to successfully use the Eight Gates against Madara during the Fourth Great Ninja War?", "opts": ["Might Guy", "Rock Lee", "Might Duy", "Kakashi Hatake"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Uchiha was responsible for killing the strongest member of the Uchiha clan's police force during the massacre?", "opts": ["Itachi", "Obito", "Shisui", "Sasuke"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the sword wielded by the Third Raikage?", "opts": ["Kiba", "Samehada", "No named sword was established", "Kusanagi"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which tailed beast was sealed inside Yagura Karatachi?", "opts": ["Three-Tails", "Four-Tails", "Six-Tails", "Two-Tails"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who created the Rasengan?", "opts": ["Jiraiya", "Minato Namikaze", "Kakashi Hatake", "Hagoromo Otsutsuki"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan possesses the Ketsuryugan?", "opts": ["Chinoike Clan", "Yuki Clan", "Kurama Clan", "Fuma Clan"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the sword used by Kisame Hoshigaki?", "opts": ["Kubikiribocho", "Samehada", "Kiba", "Hiramekarei"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first Jinchuriki of the Nine-Tails?", "opts": ["Mito Uzumaki", "Kushina Uzumaki", "Naruto Uzumaki", "Bunpuku"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Hokage created the Shadow Clone Technique?", "opts": ["First Hokage", "Second Hokage", "Third Hokage", "Fourth Hokage"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the organization that experimented on children using Hashirama's cells?", "opts": ["Root", "Akatsuki", "Kara", "The organization was not a separate group"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which two chakra natures are combined to create Wood Release?", "opts": ["Water and Earth", "Water and Wind", "Earth and Fire", "Earth and Lightning"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to possess the Mangekyo Sharingan?", "opts": ["Indra Otsutsuki", "Madara Uchiha", "Shisui Uchiha", "Fugaku Uchiha"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that allows Kakashi to send targets to another dimension?", "opts": ["Izanagi", "Kamui", "Kotoamatsukami", "Tsukuyomi"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which village did Haku originally come from?", "opts": ["Hidden Mist Village", "Hidden Rain Village", "Hidden Sound Village", "Hidden Cloud Village"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to become the Ten-Tails' Jinchuriki?", "opts": ["Hagoromo Otsutsuki", "Madara Uchiha", "Obito Uchiha", "Kaguya Otsutsuki"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character was known as the Legendary Sannin's strongest medical ninja?", "opts": ["Shizune", "Tsunade", "Sakura Haruno", "Chiyo"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that seals a target inside a gourd?", "opts": ["Six Paths: Chibaku Tensei", "Sealing Tag", "Benihisago's sealing ability", "Reaper Death Seal"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Uchiha was the first to awaken the Eternal Mangekyo Sharingan?", "opts": ["Madara Uchiha", "Sasuke Uchiha", "Izuna Uchiha", "Obito Uchiha"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the technique used by the Third Hokage to seal Orochimaru's arms?", "opts": ["Dead Demon Consuming Seal", "Reaper Death Seal", "Four Symbols Seal", "Eight Trigrams Seal"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following was NOT one of the original seven Ninja Swordsmen of the Mist?", "opts": ["Zabuza Momochi", "Kisame Hoshigaki", "Chojuro", "Mangetsu Hozuki"], "ans": 2},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which ancient weapon is associated with the ability to command Sea Kings?", "opts": ["Pluton", "Uranus", "Poseidon", "Noah"], "ans": 2},
 
-    # 351–375: Bleach
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the original Gotei 13 captain commander?", "opts": ["Shunsui Kyoraku", "Genryusai Shigekuni Yamamoto", "Jushiro Ukitake", "Retsu Unohana"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Squad did Rukia Kuchiki originally belong to?", "opts": ["Squad 13", "Squad 6", "Squad 4", "Squad 2"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of Kenpachi Zaraki's Zanpakuto?", "opts": ["Nozarashi", "Hozukimaru", "Sakanade", "Tachikaze"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first Kenpachi?", "opts": ["Kenpachi Zaraki", "Retsu Unohana", "Kiganjo", "Azashiro"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Sternritter possesses the Schrift 'The Almighty'?", "opts": ["Jugram Haschwalth", "Yhwach", "Gerard Valkyrie", "Pernida Parnkgjas"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of Urahara's Zanpakuto?", "opts": ["Benihime", "Katen Kyokotsu", "Suzumushi", "Enrakyoten"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Espada represents the aspect of death known as Sacrifice?", "opts": ["Starrk", "Barragan", "Ulquiorra", "Yammy"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the Royal Guard member who created the Zanpakuto?", "opts": ["Ichibe Hyosube", "Tenjiro Kirinji", "Oetsu Nimaiya", "Senjumaru Shutara"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which squad did Kisuke Urahara captain before becoming the Captain of Squad 12?", "opts": ["Squad 2", "Squad 5", "Squad 8", "He was not a captain before Squad 12"], "ans": 3},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the former captain of Squad 12 before Kisuke Urahara?", "opts": ["Mayuri Kurotsuchi", "Kirio Hikifune", "Retsu Unohana", "Shinji Hirako"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of Byakuya Kuchiki's Bankai?", "opts": ["Senbonzakura Kageyoshi", "Sakashima Yokoshima Happofusagari", "Kannonbiraki Benihime Aratame", "Hakka no Togame"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which character is the host of the Hollow known as White?", "opts": ["Renji Abarai", "Ichigo Kurosaki", "Uryu Ishida", "Isshin Kurosaki"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the Quincy technique that allows the user to absorb Reishi from the surroundings?", "opts": ["Blut Vene", "Ransotengai", "Sklaverei", "Hirenkyaku"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who killed the original members of the Gotei 13 during the first Quincy war?", "opts": ["Yhwach and his forces", "Aizen", "The Soul King", "The Zero Division"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Sternritter has the Schrift 'The Miracle'?", "opts": ["Lille Barro", "Askin Nakk Le Vaar", "Gerard Valkyrie", "Bazz-B"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of Shunsui Kyoraku's Bankai?", "opts": ["Karamatsu Shinju", "Katen Kyokotsu: Karamatsu Shinju", "Minazuki", "Tensa Zangetsu"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which member of the Espada was known as the Primera Espada?", "opts": ["Coyote Starrk", "Baraggan Louisenbairn", "Tier Harribel", "Ulquiorra Cifer"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Ichibe Hyosube to erase a target's name and power?", "opts": ["Futen Taisatsuryo", "Ichimonji", "Shirafude Ichimonji", "Senri Tsutensho"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the original owner of Zangetsu's Quincy form?", "opts": ["Yhwach", "Jugram Haschwalth", "Ryuken Ishida", "Soken Ishida"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which captain was responsible for developing the Gotei 13's research and development institute?", "opts": ["Kisuke Urahara", "Mayuri Kurotsuchi", "Shinji Hirako", "Sosuke Aizen"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that allows a Soul Reaper to move at high speed?", "opts": ["Hirenkyaku", "Sonido", "Shunpo", "Bringer Light"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Espada was revealed to be the former ruler of Hueco Mundo?", "opts": ["Starrk", "Barragan", "Nnoitra", "Szayelaporro"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that Aizen used to create perfect illusions?", "opts": ["Kyoka Suigetsu", "Kurohitsugi", "Hadō 90", "Sakanade"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Squad was led by Sajin Komamura?", "opts": ["Squad 7", "Squad 9", "Squad 10", "Squad 11"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who is the creator of the Hogyoku?", "opts": ["Sosuke Aizen", "Kisuke Urahara", "Both Urahara and Aizen independently created versions", "Mayuri Kurotsuchi"], "ans": 2},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient kingdom's enemy alliance during the Void Century?", "opts": ["The Twenty Kingdoms", "The Ancient Alliance", "The World Pirates", "The Five Elders"], "ans": 0},
 
-    # 376–400: Other Anime
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of the Nen ability used by Chrollo Lucilfer?", "opts": ["Skill Hunter", "Bungee Gum", "Gallery Fake", "Sun and Moon"], "ans": 0},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "Which Nen category is considered the most suitable for creating objects?", "opts": ["Enhancement", "Conjuration", "Emission", "Manipulation"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of Meruem's Royal Guard who possesses the ability Doctor Blythe?", "opts": ["Shaiapouf", "Menthuthuyoupi", "Neferpitou", "Colt"], "ans": 2},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "Who was the first chairman of the Hunter Association?", "opts": ["Isaac Netero", "Beyond Netero", "Cheadle Yorkshire", "Pariston Hill"], "ans": 0},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "Which member of the Phantom Troupe uses a vacuum cleaner named Blinky?", "opts": ["Machi", "Shizuku", "Pakunoda", "Kortopi"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "What is the name of Sukuna's original domain expansion?", "opts": ["Malevolent Shrine", "Unlimited Void", "Chimera Shadow Garden", "Self-Embodiment of Perfection"], "ans": 0},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "Who was the first person to inherit the Ten Shadows Technique in the Zenin clan?", "opts": ["Megumi Fushiguro", "Toji Fushiguro", "The previous inheritor is not named", "Naobito Zenin"], "ans": 2},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "What is the name of Yuta Okkotsu's cursed technique?", "opts": ["Copy", "Cursed Speech", "Boogie Woogie", "Ratio Technique"], "ans": 0},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "Which Titan power did Grisha Yeager possess before inheriting the Founding Titan?", "opts": ["Armored Titan", "Attack Titan", "Beast Titan", "War Hammer Titan"], "ans": 1},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "What was the name of the first king of the Walls?", "opts": ["Karl Fritz", "Uri Reiss", "Rod Reiss", "Frieda Reiss"], "ans": 0},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "Who was the first known user of Sun Breathing?", "opts": ["Tanjiro Kamado", "Yoriichi Tsugikuni", "Michikatsu Tsugikuni", "Sumiyoshi"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "Which Upper Moon was formerly a human named Hakuji?", "opts": ["Doma", "Akaza", "Kokushibo", "Gyokko"], "ans": 1},
-    {"cat": "Dragon Ball", "diff": "Hard", "xp": 150, "q": "Who was the first character to achieve Super Saiyan 2 in the main Dragon Ball Z storyline?", "opts": ["Goku", "Vegeta", "Gohan", "Trunks"], "ans": 2},
-    {"cat": "Dragon Ball", "diff": "Hard", "xp": 150, "q": "What is the name of the Kaioshin who was sealed inside the Z Sword?", "opts": ["Elder Kai", "Supreme Kai", "Grand Supreme Kai", "Chronoa"], "ans": 0},
-    {"cat": "Death Note", "diff": "Hard", "xp": 150, "q": "What is the name of the Shinigami who originally owned the Death Note used by Light?", "opts": ["Rem", "Ryuk", "Gelus", "Sidoh"], "ans": 1},
-    {"cat": "Fullmetal Alchemist", "diff": "Hard", "xp": 150, "q": "Which Homunculus represents the sin of Pride in Fullmetal Alchemist: Brotherhood?", "opts": ["Envy", "Wrath", "Pride", "Greed"], "ans": 2},
-    {"cat": "Black Clover", "diff": "Hard", "xp": 150, "q": "What is the name of the devil residing within Asta's grimoire?", "opts": ["Zagred", "Lucifero", "Liebe", "Megicula"], "ans": 2},
-    {"cat": "Fairy Tail", "diff": "Hard", "xp": 150, "q": "Who is the founder of Fairy Tail guild?", "opts": ["Mavis Vermillion", "Precht Gaebolg", "Yuri Dreyar", "Warrod Sequen"], "ans": 0},
-    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "Which previous holder of One For All was known for the Quirk Float?", "opts": ["Nana Shimura", "Daigoro Banjo", "En", "Hikage Shinomori"], "ans": 0},
-    {"cat": "Tokyo Ghoul", "diff": "Hard", "xp": 150, "q": "What is the name of the kagune type used by Rize Kamishiro?", "opts": ["Ukaku", "Koukaku", "Rinkaku", "Bikaku"], "ans": 2},
-    {"cat": "Code Geass", "diff": "Hard", "xp": 150, "q": "What is the name of Lelouch's Geass power?", "opts": ["Absolute Obedience", "Future Sight", "Mind Reading", "Memory Manipulation"], "ans": 0},
-    {"cat": "Fullmetal Alchemist", "diff": "Hard", "xp": 150, "q": "What is the name of the gate that appears when someone attempts human transmutation?", "opts": ["Gate of Truth", "Gate of Alchemy", "Gate of Equivalent Exchange", "Gate of Xerxes"], "ans": 0},
-    {"cat": "Black Clover", "diff": "Hard", "xp": 150, "q": "Which magic attribute does Yami Sukehiro possess?", "opts": ["Dark Magic", "Shadow Magic", "Gravity Magic", "Spatial Magic"], "ans": 0},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "What was the name of the Titan inherited by Lara Tybur?", "opts": ["Female Titan", "War Hammer Titan", "Cart Titan", "Jaw Titan"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "Which Hashira was known as the former Flame Hashira before Kyojuro Rengoku?", "opts": ["Shinjuro Rengoku", "Tengen Uzui", "Jigoro Kuwajima", "Sakonji Urokodaki"], "ans": 0},
-        # 401–425: One Piece — Extreme
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the giant straw hat stored in Mary Geoise?", "opts": ["Joy Boy's straw hat", "Roger's straw hat", "Nika's straw hat", "Shanks' straw hat"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first known person to possess the Voice of All Things in the Roger Pirates?", "opts": ["Rayleigh", "Roger", "Oden", "Shanks"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the island where the God Valley incident occurred?", "opts": ["Hachinosu", "Beehive Island", "God Valley", "Fullalead"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Rocks Pirates was known as the Silver Axe?", "opts": ["Shiki", "Captain John", "Wang Zhi", "His identity remains unrevealed"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient robot's first known activation period?", "opts": ["200 years ago", "800 years ago", "900 years ago", "100 years ago"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Gorosei member bears the title Warrior God of Finance?", "opts": ["Topman Warcury", "Ethanbaron V. Nusjuro", "Shepherd Ju Peter", "Marcus Mars"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ability used by the Five Elders to summon themselves to Egghead?", "opts": ["Room", "Black Vortex", "Summoning Circle", "Paw-Paw Teleportation"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first person to discover the true identity of Luffy's Devil Fruit?", "opts": ["Shanks", "Rayleigh", "Gorosei", "The exact first person is not confirmed"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was responsible for giving Kuma his Buccaneer bloodline?", "opts": ["His father, Clapp", "His mother", "Saturn", "Ginny"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient kingdom's technology-powered robot on Egghead?", "opts": ["Pacifista", "Emeth", "Seraphim", "Mark III"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Blackbeard Pirates possesses the Riki Riki no Mi?", "opts": ["Van Augur", "Burgess", "Doc Q", "Shiryu"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the island where the Revolutionary Army has its headquarters after leaving Baltigo?", "opts": ["Momoiro Island", "Kamabakka Kingdom", "Lulusia", "Karakuri Island"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first known user of the Paw-Paw Fruit?", "opts": ["Kuma", "Bonney", "Its previous user is unknown", "Ivankov"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was known as the Witching Hour Boy in Wano?", "opts": ["Denjiro", "Kawamatsu", "Shinobu", "Kawamatsu's alias was not Witching Hour Boy"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ship belonging to the Whitebeard Pirates?", "opts": ["Moby Dick", "Oro Jackson", "Red Force", "Polar Tang"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Roger Pirates was the samurai from Wano?", "opts": ["Kin'emon", "Kozuki Oden", "Denjiro", "Ashura Doji"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the giant tree on Elbaf?", "opts": ["Eve", "Adam", "Yggdrasil", "Treasure Tree Adam"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which ancient weapon was used to destroy Lulusia Kingdom?", "opts": ["Pluton", "Poseidon", "Uranus", "The weapon's identity is not officially confirmed"], "ans": 3},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ruler of the Kingdom of Kamabakka?", "opts": ["Emporio Ivankov", "Inazuma", "Belo Betty", "Dragon"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was revealed to have the Toshi Toshi no Mi?", "opts": ["Ginny", "Jewelry Bonney", "Shakuyaku", "Conney"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the previous ruler of the Sorbet Kingdom before Kuma?", "opts": ["King Bekori", "King Riku", "King Cobra", "King Elizabello"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character's epithet is 'The Tyrant'?", "opts": ["Bartholomew Kuma", "Donquixote Doflamingo", "Gecko Moria", "Kaido"], "ans": 0},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Zoro to cut steel during the Alabasta arc?", "opts": ["Ashura", "Shishi Sonson", "Tatsumaki", "Oni Giri"], "ans": 1},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was the first known user of the Bara Bara no Mi?", "opts": ["Buggy", "Shanks", "Its previous user is unknown", "Crocodile"], "ans": 2},
-    {"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient kingdom's enemy alliance during the Void Century?", "opts": ["The Ancient Kingdom", "The World Government", "The 20 Kingdoms", "The exact alliance name is unknown"], "ans": 3},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which family among the original Twenty Kingdoms did NOT move to Mary Geoise?", "opts": ["Nefertari", "Donquixote", "Figarland", "Jaygarcia"], "ans": 0},
 
-    # 426–450: Naruto — Extreme
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of Hagoromo's elder son?", "opts": ["Indra", "Asura", "Hamura", "Toneri"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Tobirama develop to counter the Uchiha's Sharingan in combat?", "opts": ["Flying Thunder God", "Shadow Clone Technique", "Reanimation Technique", "Water Dragon Bullet"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to awaken the Rinne Sharingan?", "opts": ["Hagoromo", "Madara", "Kaguya", "Sasuke"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following was NOT one of the original six paths of Pain?", "opts": ["Animal Path", "Preta Path", "Naraka Path", "Ashura Path"], "ans": 3},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the technique that allowed Obito to pass through attacks?", "opts": ["Kamui", "Izanagi", "Izanami", "Kotoamatsukami"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Uchiha was the first to awaken the Mangekyo Sharingan in the clan's recorded history?", "opts": ["Madara", "Indra", "Izuna", "Shisui"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the forbidden technique used by Danzo to control an opponent's mind?", "opts": ["Izanagi", "Izanami", "Kotoamatsukami", "Tsukuyomi"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to use the Six Paths: Chibaku Tensei sealing technique on Kaguya?", "opts": ["Naruto alone", "Sasuke alone", "Hagoromo and Hamura", "Naruto and Sasuke together"], "ans": 3},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following is the name of the Third Kazekage's special ability?", "opts": ["Iron Sand", "Gold Dust", "Magnet Release: Gold Sand", "Sand Manipulation"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first jinchuriki of the Ten-Tails?", "opts": ["Madara", "Hagoromo", "Obito", "Naruto"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which clan did Kimimaro belong to?", "opts": ["Kaguya Clan", "Hozuki Clan", "Yuki Clan", "Fuma Clan"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the sword wielded by the Second Mizukage's summoned clam?", "opts": ["Samehada", "No sword; it used genjutsu", "Kubikiribocho", "Kiba"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character possessed the ability to use the Shikotsumyaku kekkei genkai?", "opts": ["Haku", "Kimimaro", "Suigetsu", "Jugo"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the sealing technique used by Minato to split Kurama's chakra?", "opts": ["Eight Trigrams Seal", "Four Symbols Seal", "Dead Demon Consuming Seal", "Five Elements Seal"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following was the name of the Fourth Raikage?", "opts": ["A", "Darui", "Killer B", "C"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to possess the Six Paths Senjutsu?", "opts": ["Hagoromo", "Naruto", "Madara", "Obito"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which technique did Itachi use to trap Kabuto in an endless loop?", "opts": ["Tsukuyomi", "Izanami", "Kotoamatsukami", "Amaterasu"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character was the first to become the host of the Three-Tails after its revival?", "opts": ["Rin Nohara", "Yagura", "Isobu's host was not identified before Rin", "Kushina"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by the Second Hokage to create water from nothing?", "opts": ["Water Dragon Bullet", "Water Severing Wave", "Water Formation Wall", "Water Release: Water Formation Pillar"], "ans": 1},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which two chakra natures are combined to create Lava Release?", "opts": ["Fire and Earth", "Fire and Wind", "Earth and Water", "Water and Lightning"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "What was the name of the forbidden technique used by Orochimaru to transfer his consciousness into another body?", "opts": ["Living Corpse Reincarnation", "Edo Tensei", "Reaper Death Seal", "Eight Branches Technique"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which character was the original owner of the Kusanagi sword used by Orochimaru?", "opts": ["Orochimaru", "Sasuke", "The sword's original owner is unknown", "Itachi"], "ans": 2},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which of the following was NOT a member of the original Team Minato?", "opts": ["Obito", "Rin", "Kakashi", "Might Guy"], "ans": 3},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Who was the first person to master the Eight Gates?", "opts": ["Might Duy", "Might Guy", "Rock Lee", "Kakashi"], "ans": 0},
-    {"cat": "Naruto", "diff": "Hard", "xp": 150, "q": "Which Otsutsuki was responsible for creating the Chakra Fruit on Earth?", "opts": ["Kaguya", "Hagoromo", "Momoshiki", "Isshiki"], "ans": 0},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the title given to the highest-ranking Celestial Dragons who govern the World Government?", "opts": ["Holy Knights", "Five Elders", "God's Knights", "World Nobles"], "ans": 1},
 
-    # 451–475: Bleach — Extreme
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What was the original name of the Soul King?", "opts": ["Reio", "His personal name is never revealed", "Yhwach", "Ichibe Hyosube"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first person to become a Soul Reaper?", "opts": ["Ichigo", "Yamamoto", "The original first Soul Reaper is not established", "Ichibe"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Squad did Retsu Unohana originally captain?", "opts": ["Squad 4", "Squad 11", "Squad 2", "Squad 1"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What was the name of the original Gotei 13's most notorious criminal?", "opts": ["Unohana", "Yamamoto", "Kyoraku", "Ukitake"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which member of Squad Zero possesses the ability to manipulate the color black?", "opts": ["Oetsu Nimaiya", "Ichibe Hyosube", "Tenjiro Kirinji", "Senjumaru Shutara"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the Schrift possessed by Askin Nakk Le Vaar?", "opts": ["The Deathdealing", "The Balance", "The Miracle", "The Fear"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first character to use Bankai in the Bleach manga?", "opts": ["Ichigo", "Byakuya", "Renji", "Yamamoto"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Espada had the aspect of death 'Emptiness'?", "opts": ["Starrk", "Ulquiorra", "Nnoitra", "Barragan"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique that allows Uryu Ishida to reverse events between two points?", "opts": ["Antithesis", "Sklaverei", "Blut Vene", "Ransotengai"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Sternritter possesses the Schrift 'The X-Axis'?", "opts": ["Gerard Valkyrie", "Lille Barro", "Askin Nakk Le Vaar", "Bazz-B"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the Royal Guard member who created the Oken?", "opts": ["Ichibe Hyosube", "Oetsu Nimaiya", "Senjumaru Shutara", "Tenjiro Kirinji"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which character was revealed to be the original wielder of the Kenpachi title?", "opts": ["Retsu Unohana", "Yachiru Kusajishi", "Kenpachi Zaraki", "Kiganjo"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Yamamoto's Bankai to summon the dead?", "opts": ["Zanka no Tachi: East", "Zanka no Tachi: West", "Zanka no Tachi: North", "Zanka no Tachi: South"], "ans": 3},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which character's Bankai is called Kannonbiraki Benihime Aratame?", "opts": ["Kisuke Urahara", "Shinji Hirako", "Mayuri Kurotsuchi", "Rojuro Otoribashi"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which member of the Espada was known as the Segunda Espada?", "opts": ["Coyote Starrk", "Baraggan Louisenbairn", "Tier Harribel", "Ulquiorra Cifer"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Ichibe to rename an object?", "opts": ["Shirafude Ichimonji", "Ichimonji", "Futen Taisatsuryo", "Senri Tsutensho"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first person to wield the Zanpakuto Zangetsu?", "opts": ["Ichigo", "Isshin", "The original wielder is not established", "Yhwach"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Squad was formerly led by Gin Ichimaru?", "opts": ["Squad 3", "Squad 5", "Squad 9", "Squad 10"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which Sternritter was known as 'The Fear'?", "opts": ["Bambietta Basterbine", "As Nodt", "Mask De Masculine", "Pernida Parnkgjas"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What is the name of the technique used by Mayuri to alter his Bankai?", "opts": ["Konjiki Ashisogi Jizo: Matai Fukuin Shotai", "Hakka no Togame", "Kannonbiraki Benihime Aratame", "Shatatsu Karagara Shigarami no Tsuji"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Who was the first Quincy to receive a Schrift from Yhwach?", "opts": ["Jugram Haschwalth", "Lille Barro", "The exact first recipient is not established", "Bazz-B"], "ans": 2},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which character was responsible for creating the Visored?", "opts": ["Kisuke Urahara", "Sosuke Aizen", "Shinji Hirako", "Hiyori Sarugaki"], "ans": 1},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "What was the name of the first Hollow to evolve into a Vasto Lorde shown in the series?", "opts": ["Starrk", "Ulquiorra", "Grimmjow", "The first shown is not definitively established"], "ans": 3},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which character's Zanpakuto is named Sogyo no Kotowari?", "opts": ["Jushiro Ukitake", "Shunsui Kyoraku", "Retsu Unohana", "Sajin Komamura"], "ans": 0},
-    {"cat": "Bleach", "diff": "Hard", "xp": 150, "q": "Which member of the Royal Guard is known as the Great Weave Guard?", "opts": ["Tenjiro Kirinji", "Senjumaru Shutara", "Oetsu Nimaiya", "Ichibe Hyosube"], "ans": 1},
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the mysterious ruler who sits on the Empty Throne?", "opts": ["Imu", "Joy Boy", "Nerona D. Imu", "Saint Saturn"], "ans": 0},
 
-    # 476–500: Other Anime — Extreme
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of the Nen ability used by Knov to create portals?", "opts": ["Hide and Seek", "Scream", "Black Voice", "Deep Purple"], "ans": 0},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "Which Phantom Troupe member has the Nen ability Sun and Moon?", "opts": ["Feitan", "Chrollo", "Shalnark", "Franklin"], "ans": 1},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "What is the name of the Chimera Ant King?", "opts": ["Neferpitou", "Shaiapouf", "Meruem", "Menthuthuyoupi"], "ans": 2},
-    {"cat": "Hunter x Hunter", "diff": "Hard", "xp": 150, "q": "Which character used the ability Crazy Slots?", "opts": ["Ging", "Kite", "Knuckle", "Morel"], "ans": 1},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "What is the name of Kenjaku's original cursed technique?", "opts": ["Body hopping through brain transplantation", "Cursed Spirit Manipulation", "Idle Transfiguration", "Ten Shadows"], "ans": 0},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "Which cursed technique belongs to Takako Uro?", "opts": ["Sky Manipulation", "Projection Sorcery", "Star Rage", "Cursed Speech"], "ans": 0},
-    {"cat": "Jujutsu Kaisen", "diff": "Hard", "xp": 150, "q": "What was the name of the shikigami that Megumi summoned as his final trump card?", "opts": ["Mahoraga", "Agito", "Nue", "Divine Dogs"], "ans": 0},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "Which Titan power was held by the Tybur family for generations?", "opts": ["War Hammer Titan", "Attack Titan", "Beast Titan", "Cart Titan"], "ans": 0},
-    {"cat": "Attack on Titan", "diff": "Hard", "xp": 150, "q": "What was the name of the first person to inherit the Attack Titan?", "opts": ["Eren Kruger", "The first holder's identity is unknown", "Grisha Yeager", "Eren Yeager"], "ans": 1},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "Which Upper Moon was responsible for killing Kanae Kocho?", "opts": ["Doma", "Akaza", "Kokushibo", "Gyutaro"], "ans": 0},
-    {"cat": "Demon Slayer", "diff": "Hard", "xp": 150, "q": "What was the name of the first Breath of the Sun user?", "opts": ["Yoriichi Tsugikuni", "Sumiyoshi", "Tanjiro Kamado", "Michikatsu Tsugikuni"], "ans": 0},
-    {"cat": "Dragon Ball", "diff": "Hard", "xp": 150, "q": "What is the name of the Kai who trained Goku in the Other World?", "opts": ["King Kai", "Supreme Kai", "Elder Kai", "Grand Kai"], "ans": 0},
-    {"cat": "Dragon Ball", "diff": "Hard", "xp": 150, "q": "Which angel is assigned to Universe 7?", "opts": ["Vados", "Whis", "Marcarita", "Korn"], "ans": 1},
-    {"cat": "Fullmetal Alchemist", "diff": "Hard", "xp": 150, "q": "What was the name of the country where the Xerxes civilization once existed?", "opts": ["Amestris", "Xerxes", "Drachma", "Creta"], "ans": 1},
-    {"cat": "Black Clover", "diff": "Hard", "xp": 150, "q": "Which devil possesses the highest-ranking position among the Qliphoth devils?", "opts": ["Lucifero", "Zagred", "Megicula", "Liebe"], "ans": 0},
-    {"cat": "Code Geass", "diff": "Hard", "xp": 150, "q": "What is the name of C.C.'s original Geass contract partner?", "opts": ["Lelouch", "Charles zi Britannia", "A young nun", "Marianne"], "ans": 2},
-    {"cat": "Death Note", "diff": "Hard", "xp": 150, "q": "What is the name of the Shinigami who gave Misa her Death Note?", "opts": ["Ryuk", "Rem", "Gelus", "Sidoh"], "ans": 1},
-    {"cat": "Tokyo Ghoul", "diff": "Hard", "xp": 150, "q": "Which investigator was known as the CCG's Reaper?", "opts": ["Kishou Arima", "Koutarou Amon", "Juuzou Suzuya", "Kureo Mado"], "ans": 0},
-    {"cat": "My Hero Academia", "diff": "Hard", "xp": 150, "q": "What was the original Quirk of the first One For All holder?", "opts": ["Stockpiling", "Transference", "A Quirk that allowed him to pass on his power", "He originally had no Quirk"], "ans": 1},
-    {"cat": "Fairy Tail", "diff": "Hard", "xp": 150, "q": "What was the name of the first master of Fairy Tail?", "opts": ["Mavis Vermillion", "Precht Gaebolg", "Makarov Dreyar", "Hades"], "ans": 0},
-    {"cat": "Vinland Saga", "diff": "Hard", "xp": 150, "q": "What was the name of Thorfinn's father?", "opts": ["Thors", "Thorkell", "Askeladd", "Leif Erikson"], "ans": 0},
-    {"cat": "Mob Psycho 100", "diff": "Hard", "xp": 150, "q": "What is the name of the spirit that possesses Mob's younger brother?", "opts": ["Dimple", "Toichiro Suzuki", "Ekubo", "No spirit permanently possesses Ritsu"], "ans": 3},
-    {"cat": "JoJo's Bizarre Adventure", "diff": "Hard", "xp": 150, "q": "What is the name of Yoshikage Kira's Stand?", "opts": ["Killer Queen", "King Crimson", "The World", "Crazy Diamond"], "ans": 0},
-    {"cat": "Chainsaw Man", "diff": "Hard", "xp": 150, "q": "Which devil is fused with Denji?", "opts": ["Blood Devil", "Chainsaw Devil", "Control Devil", "Gun Devil"], "ans": 1},
-    {"cat": "Solo Leveling", "diff": "Hard", "xp": 150, "q": "What is the name of the first shadow soldier Sung Jinwoo obtains?", "opts": ["Igris", "Tank", "Iron", "Kaisel"], "ans": 0},
-]  # End of QUESTION_BANK
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which of the Five Elders is known as the Warrior God of Finance?", "opts": ["Topman Warcury", "Ethanbaron V. Nusjuro", "Marcus Mars", "Shepherd Ju Peter"], "ans": 1},
 
-# Helper: Check if chat is a group or supergroup
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Elder is known as the Warrior God of Environment?", "opts": ["Marcus Mars", "Saint Saturn", "Topman Warcury", "Shepherd Ju Peter"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Elder was the Warrior God of Science and Defense?", "opts": ["Saint Saturn", "Topman Warcury", "Marcus Mars", "Ethanbaron V. Nusjuro"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the ancient robot that attacked Mary Geoise 200 years ago?", "opts": ["Emeth", "Emet", "Iron Giant", "General Franky"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the ancient robot waiting for during the events of Egghead?", "opts": ["Joy Boy", "Nika", "Imu", "Luffy's father"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the scientist who created the Mother Flame?", "opts": ["Vegapunk", "Caesar Clown", "Judge Vinsmoke", "Queen"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his evil side?", "opts": ["Lilith", "Shaka", "Edison", "Pythagoras"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his wisdom?", "opts": ["Shaka", "Lilith", "York", "Atlas"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his greed?", "opts": ["York", "Atlas", "Edison", "Pythagoras"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his violence?", "opts": ["Atlas", "Lilith", "Shaka", "York"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his thinking?", "opts": ["Pythagoras", "Edison", "York", "Shaka"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite represents his creativity?", "opts": ["Edison", "Pythagoras", "Atlas", "Lilith"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Vegapunk satellite was responsible for recording and broadcasting the message about the world's future?", "opts": ["Shaka", "Lilith", "Stella", "York"], "ans": 2},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the island where Vegapunk's main laboratory is located?", "opts": ["Egghead", "Karai Bari", "Baltigo", "Punk Hazard"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was responsible for creating the Seraphim?", "opts": ["Dr. Vegapunk", "Judge Vinsmoke", "Caesar Clown", "Queen"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What race's lineage factor was used to give the Seraphim their special durability?", "opts": ["Lunarian", "Giant", "Mink", "Buccaneer"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Seraphim is based on Dracule Mihawk?", "opts": ["S-Hawk", "S-Snake", "S-Bear", "S-Shark"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Seraphim is based on Boa Hancock?", "opts": ["S-Snake", "S-Hawk", "S-Bear", "S-Shark"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Seraphim is based on Jinbe?", "opts": ["S-Shark", "S-Hawk", "S-Snake", "S-Bear"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Seraphim is based on Bartholomew Kuma?", "opts": ["S-Bear", "S-Hawk", "S-Snake", "S-Shark"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the special authority chip used to command Pacifistas and Seraphim?", "opts": ["Authority Chip", "Control Dial", "Command Core", "Pacifista Key"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character possesses the Toshi Toshi no Mi?", "opts": ["Jewelry Bonney", "Shakky", "Stussy", "Ginny"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Kuma's home kingdom?", "opts": ["Sorbet Kingdom", "Goa Kingdom", "Lulusia Kingdom", "Prodence Kingdom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was Kuma's father's name?", "opts": ["Clapp", "Ginny", "Bukan", "Bartholomew"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which race did Kuma belong to?", "opts": ["Buccaneer", "Lunarian", "Mink", "Giant"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the former owner of the Paw-Paw Fruit before Kuma?", "opts": ["Unknown", "Ivankov", "Dragon", "Vegapunk"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the revolutionary who was Kuma's close friend and later became Bonney's mother?", "opts": ["Ginny", "Koala", "Belo Betty", "Inazuma"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Revolutionary Army commander controls the East Army?", "opts": ["Belo Betty", "Morley", "Karasu", "Lindbergh"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Revolutionary Army commander controls the West Army?", "opts": ["Morley", "Belo Betty", "Karasu", "Lindbergh"], "ans": 2},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Revolutionary Army commander controls the North Army?", "opts": ["Karasu", "Morley", "Lindbergh", "Belo Betty"], "ans": 1},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Revolutionary Army commander controls the South Army?", "opts": ["Lindbergh", "Karasu", "Morley", "Belo Betty"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the Revolutionary Army's chief of staff?", "opts": ["Sabo", "Koala", "Hack", "Dragon"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character trained Sabo in the use of the Dragon Claw Fist?", "opts": ["Monkey D. Dragon", "Emporio Ivankov", "Hack", "Koala"], "ans": 2},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Sabo's signature fighting technique?", "opts": ["Dragon Claw Fist", "Rokuogan", "Fish-Man Karate", "Hasshoken"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Devil Fruit did Sabo inherit from Ace?", "opts": ["Mera Mera no Mi", "Hie Hie no Mi", "Magu Magu no Mi", "Goro Goro no Mi"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the kingdom where Sabo, Ace, and Luffy grew up?", "opts": ["Goa Kingdom", "Sorbet Kingdom", "Lvneel Kingdom", "Dawn Kingdom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first person to give Luffy his iconic straw hat?", "opts": ["Shanks", "Gol D. Roger", "Rayleigh", "Garp"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who originally owned the straw hat before Shanks?", "opts": ["Gol D. Roger", "Joy Boy", "Rocks D. Xebec", "Silvers Rayleigh"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Where was the giant straw hat seen in the story kept?", "opts": ["Mary Geoise", "Impel Down", "Punk Hazard", "Laugh Tale"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient figure whose will is connected to the giant straw hat?", "opts": ["Joy Boy", "Rocks D. Xebec", "Nika", "Imu"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which kingdom was ruled by the Nefertari family?", "opts": ["Alabasta", "Dressrosa", "Drum Kingdom", "Prodence Kingdom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the Alabasta king who was framed by Crocodile?", "opts": ["Nefertari Cobra", "Nefertari Titi", "Nefertari D. Lili", "Nefertari Kobra"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which organization did Crocodile secretly lead in Alabasta?", "opts": ["Baroque Works", "Donquixote Family", "Germa 66", "Cross Guild"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the codename of Nico Robin when she worked for Baroque Works?", "opts": ["Miss All Sunday", "Miss Doublefinger", "Miss Goldenweek", "Miss Valentine"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was Mr. 1's partner in Baroque Works?", "opts": ["Miss Doublefinger", "Miss All Sunday", "Miss Goldenweek", "Miss Merry Christmas"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the Devil Fruit that allows Daz Bonez to turn his body into blades?", "opts": ["Supa Supa no Mi", "Buki Buki no Mi", "Kama Kama no Mi", "Toge Toge no Mi"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Baroque Works agent possessed the Kilo Kilo no Mi?", "opts": ["Miss Valentine", "Miss Doublefinger", "Miss Goldenweek", "Miss Merry Christmas"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Baroque Works agent possessed the Toge Toge no Mi?", "opts": ["Miss Doublefinger", "Miss Valentine", "Miss Goldenweek", "Miss Monday"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Baroque Works agent was actually a painter and used colors to manipulate emotions?", "opts": ["Miss Goldenweek", "Miss Valentine", "Miss Doublefinger", "Miss Merry Christmas"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the giant duck ridden by Vivi?", "opts": ["Karoo", "Pierre", "Matsuge", "Bunbuku"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which animal served as the leader of the Super Spot-Billed Duck Troops?", "opts": ["Karoo", "Matsuge", "Pierre", "Chouchou"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the kingdom where Chopper was born?", "opts": ["Drum Kingdom", "Alabasta", "Sakura Kingdom", "Lvneel Kingdom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was Dr. Hiriluk's dream for Drum Island?", "opts": ["To cure the country's hearts", "To become Pirate King", "To discover the One Piece", "To defeat the World Government"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the mushroom Chopper mistakenly believed could cure Hiriluk?", "opts": ["Amiudake", "Sakura Mushroom", "Rumble Mushroom", "Blue Mushroom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which doctor became Chopper's mentor after Hiriluk's death?", "opts": ["Dr. Kureha", "Dr. Hogback", "Dr. Vegapunk", "Dr. Tsukimi"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Chopper's transformation-enhancing medicine?", "opts": ["Rumble Ball", "Energy Steroid", "SAD", "Blue Pill"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Devil Fruit did Brook eat?", "opts": ["Yomi Yomi no Mi", "Horo Horo no Mi", "Kage Kage no Mi", "Soru Soru no Mi"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the Rumbar Pirates' captain before Brook?", "opts": ["Yorki", "Laboon", "Crocus", "Lafitte"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which island did the Rumbar Pirates originally come from?", "opts": ["West Blue", "North Blue", "South Blue", "East Blue"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character is known as the 'Soul King'?", "opts": ["Brook", "Gecko Moria", "Hody Jones", "Scratchmen Apoo"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Brook's sword?", "opts": ["Soul Solid", "Shusui", "Yoru", "Enma"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which island did the Straw Hats visit immediately after leaving Fish-Man Island?", "opts": ["Punk Hazard", "Dressrosa", "Zou", "Wano"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the samurai whose torso appeared on Punk Hazard?", "opts": ["Kin'emon", "Kanjuro", "Raizo", "Denjiro"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was revealed to be the traitor who leaked information to Orochi?", "opts": ["Kanjuro", "Kin'emon", "Denjiro", "Ashura Doji"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the legendary swordsman from Wano whose corpse was stolen from his grave?", "opts": ["Shimotsuki Ryuma", "Kozuki Oden", "Shimotsuki Ushimaru", "Kozuki Sukiyaki"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which sword was known as the national treasure of Wano?", "opts": ["Shusui", "Enma", "Ame no Habakiri", "Nidai Kitetsu"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the daimyo of Kuri before Kaido took control of Wano?", "opts": ["Kozuki Oden", "Denjiro", "Ashura Doji", "Shimotsuki Ushimaru"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Nine Red Scabbards was also known as Kyoshiro?", "opts": ["Denjiro", "Kin'emon", "Kawamatsu", "Raizo"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the weapon used by Kozuki Oden to fight Kaido?", "opts": ["Enma and Ame no Habakiri", "Shusui and Yoru", "Wado Ichimonji and Enma", "Nidai Kitetsu and Sandai Kitetsu"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the first person to wound Kaido permanently?", "opts": ["Kozuki Oden", "Whitebeard", "Shanks", "Garp"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Kaido's strongest known attack against Luffy?", "opts": ["Flaming Drum Dragon", "Thunder Bagua", "Death Destroyer Thunder Bagua", "Boro Breath"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which member of the Worst Generation helped Luffy and Law defeat Kaido and Big Mom?", "opts": ["Eustass Kid", "Urouge", "Apoo", "Hawkins"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the technique Law used to silence Big Mom?", "opts": ["Silence", "Gamma Knife", "Injection Shot", "Counter Shock"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which technique did Kid use to assign magnetic polarity to Big Mom?", "opts": ["Assign", "Punk Gibson", "Damned Punk", "Punk Rotten"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Luffy's awakened Devil Fruit form?", "opts": ["Gear Fifth", "Gear Fourth", "Nightmare Luffy", "Gear Sixth"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the true name of Luffy's Devil Fruit?", "opts": ["Hito Hito no Mi, Model: Nika", "Gomu Gomu no Mi", "Hito Hito no Mi, Model: Daibutsu", "Mera Mera no Mi"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which organization concealed the true identity of Luffy's Devil Fruit for centuries?", "opts": ["World Government", "Revolutionary Army", "Cross Guild", "Marines"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the ancient warrior associated with the Sun God Nika?", "opts": ["Joy Boy", "Rocks D. Xebec", "Noland", "Davy Jones"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character is known as the 'Strongest Creature in the World'?", "opts": ["Kaido", "Whitebeard", "Big Mom", "Blackbeard"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character is known as the 'World's Strongest Swordsman'?", "opts": ["Dracule Mihawk", "Shanks", "Roronoa Zoro", "Silvers Rayleigh"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the pirate crew that once included Kaido, Big Mom, and Whitebeard?", "opts": ["Rocks Pirates", "Roger Pirates", "Beasts Pirates", "Golden Lion Pirates"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who defeated the Rocks Pirates at God Valley alongside Garp?", "opts": ["Gol D. Roger", "Sengoku", "Rayleigh", "Shiki"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the captain of the Rocks Pirates?", "opts": ["Rocks D. Xebec", "Gol D. Roger", "Edward Newgate", "Shiki"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which Marine earned the title 'Hero of the Marines' after the God Valley incident?", "opts": ["Monkey D. Garp", "Sengoku", "Tsuru", "Kong"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which former Rocks Pirates member became the captain of the Golden Lion Pirates?", "opts": ["Shiki", "Kaido", "Whitebeard", "Big Mom"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What was the name of the island where Roger was executed?", "opts": ["Loguetown", "Shells Town", "Foosha Village", "Baterilla"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Who was the Marine officer who executed Gol D. Roger?", "opts": ["Unknown executioners", "Monkey D. Garp", "Sengoku", "Smoker"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which pirate was the first known person to reach Laugh Tale with Roger?", "opts": ["Silvers Rayleigh", "Shanks", "Buggy", "Crocus"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What did Roger's crew discover on Laugh Tale?", "opts": ["The true history and the One Piece", "The location of the All Blue", "The ancient weapon Uranus", "The secret of Devil Fruit creation"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Why did Roger's crew laugh after discovering the treasure on Laugh Tale?", "opts": ["The exact reason has not been fully revealed", "They found no treasure", "They were tricked by Joy Boy", "They discovered the world was empty"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which character was too young to understand what happened at Laugh Tale?", "opts": ["Shanks", "Rayleigh", "Crocus", "Scopper Gaban"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of Roger's first mate?", "opts": ["Silvers Rayleigh", "Scopper Gaban", "Kozuki Oden", "Crocus"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "Which former Roger Pirates member became the doctor of the Rumbar Pirates?", "opts": ["Crocus", "Rayleigh", "Gaban", "Oden"], "ans": 0},
+
+{"cat": "One Piece", "diff": "Hard", "xp": 150, "q": "What is the name of the giant tree on Elbaf?", "opts": ["Treasure Tree Adam", "Sunlight Tree Eve", "Yggdrasil", "Ohara Tree of Knowledge"], "ans": 2},    
+
+    # Bleach
+    {"q": "What is the name of Ichigo Kurosaki's iconic zanpakuto in its initial Shikai state?", "options": ["Zangetsu", "Senbonzakura", "Kyoka Suigetsu", "Hyorinmaru"], "ans": 0, "cat": "bleach", "diff": "Easy"},
+    {"q": "Who is the captain of Squad 10 known for his ice-type Zanpakuto?", "options": ["Byakuya Kuchiki", "Toshiro Hitsugaya", "Kenpachi Zaraki", "Shunsui Kyoraku"], "ans": 1, "cat": "bleach", "diff": "Easy"},
+    {"q": "What race are the spiritual beings residing in Hueco Mundo?", "options": ["Soul Reapers", "Quincys", "Hollows / Arrancar", "Bounts"], "ans": 2, "cat": "bleach", "diff": "Easy"},
+
+    # Dragon Ball
+    {"q": "What is the name of Goku's signature energy attack taught by Master Roshi?", "options": ["Spirit Bomb", "Kamehameha", "Final Flash", "Special Beam Cannon"], "ans": 1, "cat": "dragon ball", "diff": "Easy"},
+    {"q": "What is Vegeta's royal title?", "options": ["Prince of all Saiyans", "King of Earth", "Emperor of Universe 7", "Lord of Space"], "ans": 0, "cat": "dragon ball", "diff": "Easy"},
+    {"q": "How many Dragon Balls must be gathered to summon Shenron?", "options": ["5", "7", "10", "3"], "ans": 1, "cat": "dragon ball", "diff": "Easy"},
+
+    # Jujutsu Kaisen
+    {"q": "What cursed object does Yuji Itadori swallow at the beginning of the series?", "options": ["Sukuna's Finger", "Prison Realm", "Cursed Womb", "Death Painting"], "ans": 0, "cat": "jujutsu kaisen", "diff": "Easy"},
+    {"q": "What is Satoru Gojo's signature innate technique category?", "options": ["Ten Shadows", "Limitless (Infinity)", "Blood Manipulation", "Idle Transfiguration"], "ans": 1, "cat": "jujutsu kaisen", "diff": "Easy"},
+    {"q": "Who is known as the King of Curses?", "options": ["Mahito", "Kenjaku", "Ryomen Sukuna", "Suguru Geto"], "ans": 2, "cat": "jujutsu kaisen", "diff": "Easy"},
+
+    # Demon Slayer
+    {"q": "What is the name of Tanjiro's breathing style taught by Urokodaki?", "options": ["Thunder Breathing", "Water Breathing", "Sun Breathing", "Flame Breathing"], "ans": 1, "cat": "demon slayer", "diff": "Easy"},
+    {"q": "What substance allows demons to survive sunlight in small doses or grow stronger?", "options": ["Blue Spider Lily", "Wisteria Flower", "Human Blood", "Muzan's Cells"], "ans": 0, "cat": "demon slayer", "diff": "Medium"},
+
+    # Attack on Titan
+    {"q": "Inside which circular defensive wall does humanity live at the start of AOT?", "options": ["Wall Maria", "Wall Rose", "Wall Sina", "All of the above"], "ans": 3, "cat": "attack on titan", "diff": "Easy"},
+    {"q": "What is the proper name of the elite squad led by Levi Ackerman?", "options": ["Survey Corps", "Military Police", "Garrison Regiment", "Yeagerists"], "ans": 0, "cat": "attack on titan", "diff": "Easy"}
+]
+
+
 def is_group_chat(message: Message) -> bool:
     return message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
 
 
-
-def get_quiz_lobby_text(host_name: str, host_id: int, players_dict: dict) -> str:
+def get_quiz_lobby_text(host_name: str, host_id: int, category: str, players_dict: dict) -> str:
     if players_dict:
         player_list = "\n".join(
-            [f"{idx}. 👤 [{name}](tg://user?id={uid})" for idx, (uid, name) in enumerate(players_dict.items(), 1)]
+            [f"{idx}. 🧠 [{name}](tg://user?id={uid})" for idx, (uid, name) in enumerate(players_dict.items(), 1)]
         )
     else:
-        player_list = "• *No players joined yet!*"
+        player_list = "• *Waiting for challengers to join...*"
 
     host_mention = f"[{host_name}](tg://user?id={host_id})"
 
@@ -734,247 +534,247 @@ def get_quiz_lobby_text(host_name: str, host_id: int, players_dict: dict) -> str
         f"🧠 **ANIME QUIZ — MATCH LOBBY**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"👑 **Host:** {host_mention}\n"
-        f"⚙️ **Settings:** `10 Questions` • `20s/Question` • `Streak & Speed Bonuses`\n\n"
-        f"👥 **Joined Players ({len(players_dict)}/30):**\n"
+        f"📚 **Category:** `{category.title()}` (10 Questions)\n"
+        f"👥 **Joined Challengers ({len(players_dict)}/10):**\n"
         f"{player_list}\n\n"
-        f"👉 Type `/quizjoin` to enter, `/quizstart` to begin!"
+        f"👉 Type `/join` to enter • `/startgame` to begin!"
     )
 
 
 @router.message(Command("quiz"))
 async def cmd_quiz_create(message: Message):
     if not is_group_chat(message):
-        return await message.answer("❌ **Anime Quiz can only be played inside group chats!** Add me to your group to host a match.", parse_mode="Markdown")
+        return await message.answer(
+            "❌ **Anime Quiz can only be played inside group chats!** Add me to a group to host a match.",
+            parse_mode="Markdown",
+        )
 
     chat_id = message.chat.id
-    if chat_id in QUIZ_GAMES:
-        return await message.reply("⚠️ A quiz lobby or match is already active here! Use `/quizjoin` or `/quizstop`.")
+    if chat_id in QUIZ_LOBBIES or chat_id in ACTIVE_QUIZZES:
+        return await message.reply("⚠️ A quiz match or lobby is already active in this group!")
+
+    args = message.text.split(maxsplit=1)
+    category = args[1].lower() if len(args) > 1 else "all animes"
 
     await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
 
-    QUIZ_GAMES[chat_id] = {
+    QUIZ_LOBBIES[chat_id] = {
         "host": message.from_user.id,
         "host_name": message.from_user.full_name,
-        "status": "WAITING",
+        "category": category,
         "players": {message.from_user.id: message.from_user.full_name},
-        "scores": {message.from_user.id: 0},
-        "streaks": {message.from_user.id: 0},
-        "q_index": 0,
-        "answered_current": set(),
-        "first_answered": False,
-        "questions": random.sample(QUESTION_BANK, k=min(10, len(QUESTION_BANK))),
     }
 
     lobby_text = get_quiz_lobby_text(
         host_name=message.from_user.full_name,
         host_id=message.from_user.id,
-        players_dict=QUIZ_GAMES[chat_id]["players"],
+        category=category,
+        players_dict=QUIZ_LOBBIES[chat_id]["players"],
     )
     await message.answer(lobby_text, parse_mode="Markdown")
 
 
-@router.message(Command("quizjoin"))
+@router.message(Command("quizanimes"))
+async def cmd_list_quiz_animes(message: Message):
+    categories = sorted(list(set(q["cat"] for q in QUESTION_BANK)))
+    text = (
+        f"📚 **QUIZ CATEGORIES & DATABASE**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• `All Animes` (Default mixed questions)\n"
+        + "".join(f"• `{c.title()}`\n" for c in categories) +
+        f"\n👉 *Usage example:* `/quiz naruto`"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+
+@router.message(Command("join"))
 async def cmd_quiz_join(message: Message):
     if not is_group_chat(message):
-        return await message.reply("❌ Quiz lobbies can only be joined inside group chats.")
+        return await message.reply("❌ Lobbies can only be joined inside group chats.")
 
-    game = QUIZ_GAMES.get(message.chat.id)
-    if not game or game["status"] != "WAITING":
-        return await message.reply("❌ No open quiz lobby to join. Start one with `/quiz`.")
+    chat_id = message.chat.id
+    lobby = QUIZ_LOBBIES.get(chat_id)
+    if not lobby:
+        return await message.reply("❌ No waiting quiz lobby found. Start one with `/quiz`.")
 
     uid = message.from_user.id
-    if uid in game["players"]:
-        return await message.reply("✅ You are already in the lobby!")
-    if len(game["players"]) >= 30:
-        return await message.reply("🚫 Lobby is full (30/30 players).")
+    if uid in lobby["players"]:
+        return await message.reply("✅ You already joined the lobby!")
+    if len(lobby["players"]) >= 10:
+        return await message.reply("🚫 Lobby full (10/10).")
 
     await ensure_user(uid, message.from_user.username, message.from_user.full_name)
-    game["players"][uid] = message.from_user.full_name
-    game["scores"][uid] = 0
-    game["streaks"][uid] = 0
+    lobby["players"][uid] = message.from_user.full_name
 
     lobby_text = get_quiz_lobby_text(
-        host_name=game["host_name"],
-        host_id=game["host"],
-        players_dict=game["players"],
+        host_name=lobby["host_name"],
+        host_id=lobby["host"],
+        category=lobby["category"],
+        players_dict=lobby["players"],
     )
     await message.answer(
-        f"⚡ **{message.from_user.full_name}** joined the match!\n\n{lobby_text}",
+        f"🧠 **{message.from_user.full_name}** joined the Quiz lobby!\n\n{lobby_text}",
         parse_mode="Markdown",
     )
 
 
-@router.message(Command("quizleave"))
-async def cmd_quiz_leave(message: Message):
-    game = QUIZ_GAMES.get(message.chat.id)
-    uid = message.from_user.id
-    if game and game["status"] == "WAITING" and uid in game["players"]:
-        del game["players"][uid]
-        game["scores"].pop(uid, None)
-        await message.answer(f"🚪 **{message.from_user.full_name}** left the quiz lobby.")
-
-
-@router.message(Command("quizstop"))
-async def cmd_quiz_stop(message: Message):
-    game = QUIZ_GAMES.get(message.chat.id)
-    if game and message.from_user.id == game["host"]:
-        QUIZ_GAMES.pop(message.chat.id, None)
-        await message.answer("🛑 Quiz match terminated by host.")
-
-
-@router.message(Command("quizstart"))
-async def cmd_quiz_start(message: Message):
+@router.message(Command("startgame"))
+async def cmd_quiz_startgame(message: Message):
     chat_id = message.chat.id
-    game = QUIZ_GAMES.get(chat_id)
-    if not game or game["status"] != "WAITING":
-        return await message.reply("❌ No waiting quiz lobby found.")
-    if message.from_user.id != game["host"]:
-        return await message.reply("⚠️ Only the lobby host can start the quiz.")
-
-    game["status"] = "RUNNING"
-    asyncio.create_task(run_quiz_loop(message, chat_id))
-
-
-async def run_quiz_loop(message: Message, chat_id: int):
-    game = QUIZ_GAMES.get(chat_id)
-    if not game:
+    lobby = QUIZ_LOBBIES.get(chat_id)
+    if not lobby:
         return
 
-    for idx, q_data in enumerate(game["questions"]):
-        if chat_id not in QUIZ_GAMES:
-            return
-        game["q_index"] = idx
-        game["answered_current"] = set()
-        game["first_answered"] = False
+    if message.from_user.id != lobby["host"]:
+        return await message.reply("⚠️ Only the host can start the quiz match.")
 
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=f"{chr(65+i)}) {opt}", callback_data=f"qz:{idx}:{i}")]
-                for i, opt in enumerate(q_data["opts"])
-            ]
-        )
-        q_msg = await message.answer(
-            f"❓ **QUESTION {idx+1}/{len(game['questions'])}**  |  🏷️ `{q_data['cat']}` ({q_data['diff']})\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"**{q_data['q']}**\n\n"
-            f"⏱️ *20 seconds remaining...*",
-            reply_markup=kb,
-            parse_mode="Markdown",
-        )
-        await asyncio.sleep(20)
-        if chat_id not in QUIZ_GAMES:
-            return
-        correct_opt = q_data["opts"][q_data["ans"]]
-        try:
-            await q_msg.edit_text(
-                f"⏰ **TIME'S UP! — Question {idx+1}**\n"
-                f"✅ Correct Answer: **{correct_opt}**",
-                parse_mode="Markdown",
-            )
-        except Exception:
-            pass
-        await asyncio.sleep(2)
+    QUIZ_LOBBIES.pop(chat_id, None)
 
-    # Match Podium & Rewards
-    sorted_scores = sorted(game["scores"].items(), key=lambda x: x[1], reverse=True)
-    medals = ["🥇", "🥈", "🥉"]
-    lines = ["🏆 **ANIME QUIZ — FINAL PODIUM**\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━"]
-    for rank, (uid, pts) in enumerate(sorted_scores):
-        tag = medals[rank] if rank < 3 else f"**{rank+1}.**"
-        name = game["players"].get(uid, "Player")
-        mention_name = f"[{name}](tg://user?id={uid})"
-        lines.append(f"{tag} {mention_name} — `{pts} XP`")
-        won = "quiz" if rank == 0 and pts > 0 else None
-        coins = 100 if rank == 0 else 30
-        await record_progression(uid, chat_id, xp=pts, coins=coins, won_mode=won, played=True)
-
-    QUIZ_GAMES.pop(chat_id, None)
-    await message.answer("\n".join(lines), parse_mode="Markdown")
-
-
-@router.callback_query(F.data.startswith("qz:"))
-async def cb_quiz_answer(callback: CallbackQuery):
-    chat_id = callback.message.chat.id
-    game = QUIZ_GAMES.get(chat_id)
-    if not game or game["status"] != "RUNNING":
-        return await callback.answer("This question has expired.", show_alert=True)
-
-    _, q_idx_str, opt_str = callback.data.split(":")
-    q_idx, opt = int(q_idx_str), int(opt_str)
-    uid = callback.from_user.id
-
-    if uid not in game["players"]:
-        return await callback.answer("You are not registered in this match!", show_alert=True)
-    if q_idx != game["q_index"]:
-        return await callback.answer("Question already closed!", show_alert=True)
-    if uid in game["answered_current"]:
-        return await callback.answer("You already locked in an answer!", show_alert=True)
-
-    game["answered_current"].add(uid)
-    q_data = game["questions"][q_idx]
-
-    if opt == q_data["ans"]:
-        bonus = 0
-        if not game["first_answered"]:
-            game["first_answered"] = True
-            bonus += 25  # First correct answer bonus
-        game["streaks"][uid] = game["streaks"].get(uid, 0) + 1
-        if game["streaks"][uid] == 5:
-            bonus += 100  # Five-answer streak bonus
-        earned = q_data["xp"] + bonus
-        game["scores"][uid] += earned
-        await callback.answer(f"✅ Correct! +{earned} XP", show_alert=False)
+    cat = lobby["category"]
+    if cat == "all animes":
+        filtered_questions = QUESTION_BANK
     else:
-        game["streaks"][uid] = 0
-        await callback.answer("❌ Wrong answer! Streak reset.", show_alert=False)
+        filtered_questions = [q for q in QUESTION_BANK if cat in q["cat"].lower()]
+        if len(filtered_questions) < 5:
+            filtered_questions = QUESTION_BANK  # Fallback if category has too few questions
 
+    # Pick 10 questions (or max available)
+    selected_questions = random.sample(filtered_questions, k=min(10, len(filtered_questions)))
 
-@router.message(Command("addquiz"))
-async def cmd_add_quiz(message: Message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "⚠️ **Usage:**\n`/addquiz Question | Option1, Option2, Option3, Option4 | CorrectIndex (0-3)`",
-            parse_mode="Markdown",
-        )
-        return
-
-    parts = args[1].split("|")
-    if len(parts) < 3:
-        await message.answer("❌ **Invalid format!** Use `|` to separate question, options, and correct option index.", parse_mode="Markdown")
-        return
-
-    q_text = parts[0].strip()
-    options = [opt.strip() for opt in parts[1].split(",")]
-    try:
-        correct_idx = int(parts[2].strip())
-    except ValueError:
-        await message.answer("❌ Correct index must be a number between 0 and 3.")
-        return
-
-    if len(options) < 2:
-        await message.answer("❌ Please provide at least 2 options separated by commas.")
-        return
-
-    if not (0 <= correct_idx < len(options)):
-        await message.answer(f"❌ Correct index must be between 0 and {len(options)-1}.")
-        return
-
-    new_q = {
-        "cat": "Community Added",
-        "diff": "Medium",
-        "xp": 100,
-        "q": q_text,
-        "opts": options,
-        "ans": correct_idx,
+    ACTIVE_QUIZZES[chat_id] = {
+        "players": lobby["players"],
+        "scores": {uid: 0 for uid in lobby["players"]},
+        "questions": selected_questions,
+        "current_q": 0,
+        "answered": set(),
+        "correct_user": None,
     }
-    QUESTION_BANK.append(new_q)
 
     await message.answer(
-        f"✅ **Successfully added new quiz question!**\n\n"
-        f"📌 **Q:** {q_text}\n"
-        f"🔢 **Options:** {', '.join(options)}\n"
-        f"🎯 **Correct Option Index:** `{correct_idx}`",
+        f"🚀 **ANIME QUIZ MATCH STARTED!**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total Questions: **{len(selected_questions)}**\n"
+        f"Get ready for Question 1!",
+        parse_mode="Markdown",
+    )
+    await asyncio.sleep(2)
+    await send_next_quiz_question(message, chat_id)
+
+
+async def send_next_quiz_question(message: Message, chat_id: int):
+    quiz = ACTIVE_QUIZZES.get(chat_id)
+    if not quiz:
+        return
+
+    q_idx = quiz["current_q"]
+    if q_idx >= len(quiz["questions"]):
+        return await finalize_quiz_match(message, chat_id)
+
+    q_data = quiz["questions"][q_idx]
+    quiz["answered"] = set()
+    quiz["correct_user"] = None
+
+    options_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=opt, callback_data=f"quizans:{chat_id}:{i}")]
+            for i, opt in enumerate(q_data["options"])
+        ]
+    )
+
+    q_text = (
+        f"🧠 **QUESTION {q_idx + 1} / {len(quiz['questions'])}**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"❓ **{q_data['q']}**\n\n"
+        f"⏱️ *You have 15 seconds to answer!*"
+    )
+    
+    await message.answer(q_text, reply_markup=options_kb, parse_mode="Markdown")
+    await asyncio.sleep(15)
+
+    # After 15 seconds check if answered, else move to next
+    if chat_id in ACTIVE_QUIZZES and quiz["current_q"] == q_idx:
+        quiz["current_q"] += 1
+        correct_ans_text = q_data["options"][q_data["ans"]]
+        await message.answer(
+            f"⏰ **Time's up for Question {q_idx + 1}!**\n"
+            f"✅ Correct Answer was: **{correct_ans_text}**",
+            parse_mode="Markdown",
+        )
+        await asyncio.sleep(2)
+        await send_next_quiz_question(message, chat_id)
+
+
+@router.callback_query(F.data.startswith("quizans:"))
+async def cb_quiz_answer(callback: CallbackQuery):
+    _, chat_id_s, opt_idx_s = callback.data.split(":")
+    chat_id = int(chat_id_s)
+    quiz = ACTIVE_QUIZZES.get(chat_id)
+
+    if not quiz:
+        return await callback.answer("Quiz is not active.", show_alert=True)
+
+    uid = callback.from_user.id
+    if uid not in quiz["players"]:
+        return await callback.answer("You are not part of this quiz match!", show_alert=True)
+
+    if uid in quiz["answered"]:
+        return await callback.answer("You already answered this question!", show_alert=True)
+
+    quiz["answered"].add(uid)
+    q_idx = quiz["current_q"]
+    q_data = quiz["questions"][q_idx]
+    chosen_ans = int(opt_idx_s)
+
+    if chosen_ans == q_data["ans"]:
+        quiz["scores"][uid] += 10
+        p_name = quiz["players"][uid]
+        await callback.answer("🎉 Correct Answer!", show_alert=True)
+        
+        # Instantly lock question and move forward
+        quiz["current_q"] += 1
+        correct_ans_text = q_data["options"][q_data["ans"]]
+        await callback.message.edit_text(
+            f"🧠 **QUESTION {q_idx + 1} — ANSWERED!**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"❓ **{q_data['q']}**\n\n"
+            f"🏆 **First Correct:** [{p_name}](tg://user?id={uid}) (+10 pts)\n"
+            f"✅ Answer: **{correct_ans_text}**",
+            parse_mode="Markdown",
+        )
+        await asyncio.sleep(2)
+        await send_next_quiz_question(callback.message, chat_id)
+    else:
+        await callback.answer("❌ Wrong Answer!", show_alert=True)
+
+
+async def finalize_quiz_match(message: Message, chat_id: int):
+    quiz = ACTIVE_QUIZZES.pop(chat_id, None)
+    if not quiz:
+        return
+
+    sorted_scores = sorted(quiz["scores"].items(), key=lambda x: x[1], reverse=True)
+    
+    score_board = ""
+    for rank, (uid, pts) in enumerate(sorted_scores, 1):
+        name = quiz["players"][uid]
+        medal = "🥇" if rank == 1 else ("🥈" if rank == 2 else ("🥉" if rank == 3 else f"#{rank}"))
+        score_board += f"{medal} **{name}** — `{pts} points`\n"
+
+        # Distribute Rewards (XP & Coins based on rank/points)
+        is_winner = (rank == 1 and pts > 0)
+        await record_progression(
+            uid,
+            chat_id,
+            xp=300 if is_winner else (150 if pts > 0 else 50),
+            coins=120 if is_winner else (50 if pts > 0 else 10),
+            won_mode="quiz" if is_winner else None,
+        )
+
+    await message.answer(
+        f"🏆 **ANIME QUIZ — FINAL RESULTS**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{score_board}\n\n"
+        f"🎁 Rewards and XP have been distributed to all participants!",
         parse_mode="Markdown",
     )
     
