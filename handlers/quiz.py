@@ -712,6 +712,7 @@ QUESTION_BANK = [
     {"cat": "JoJo's Bizarre Adventure", "diff": "Hard", "xp": 150, "q": "What is the name of Yoshikage Kira's Stand?", "opts": ["Killer Queen", "King Crimson", "The World", "Crazy Diamond"], "ans": 0},
     {"cat": "Chainsaw Man", "diff": "Hard", "xp": 150, "q": "Which devil is fused with Denji?", "opts": ["Blood Devil", "Chainsaw Devil", "Control Devil", "Gun Devil"], "ans": 1},
     {"cat": "Solo Leveling", "diff": "Hard", "xp": 150, "q": "What is the name of the first shadow soldier Sung Jinwoo obtains?", "opts": ["Igris", "Tank", "Iron", "Kaisel"], "ans": 0},
+]
 
 # Helper: Check if chat is a group or supergroup
         def is_group_chat(message: Message) -> bool:
