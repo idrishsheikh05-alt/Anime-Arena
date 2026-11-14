@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
-from aiogram import Router, F
+from io import BytesIO
+from PIL import Image, ImageDraw
+from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 from sqlalchemy import select, desc
+
 from config import SHOP_CATALOG, IST, BOT_OWNERS
 from database import async_session, User, UserItem, GroupMemberStats, ensure_user, get_rank_title, redis_client
 
@@ -50,16 +53,12 @@ async def cmd_start(message: Message):
     )
 
 
-from io import BytesIO
-from aiogram.types import BufferedInputFile
-from PIL import Image, ImageDraw, ImageFont
-
-async def render_profile(message, user_id: int, bot) -> tuple[BufferedInputFile, str]:
+async def render_profile(user_id: int, bot: Bot) -> tuple[BufferedInputFile | None, str]:
     async with async_session() as session:
         user = await session.get(User, user_id)
         if not user:
-            return None, "❌ Profile not found."
-            
+            return None, "❌ Profile not found. Send /start first."
+
         total_wins = user.quiz_wins + user.imposter_wins + user.mafia_wins + user.town_wins
         xp_in_lvl = user.xp % 500
         filled = int((xp_in_lvl / 500) * 10)
@@ -70,29 +69,34 @@ async def render_profile(message, user_id: int, bot) -> tuple[BufferedInputFile,
         card = Image.new("RGB", (800, 400), color=(25, 25, 35))
         draw = ImageDraw.Draw(card)
 
+        # Draw default avatar placeholder circle
+        draw.ellipse((40, 40, 180, 180), fill=(55, 55, 75), outline=(0, 255, 127), width=3)
+
         # 2. User ki Telegram PFP fetch karke draw karein
         try:
             photos = await bot.get_user_profile_photos(user_id, limit=1)
             if photos.total_count > 0:
                 file_id = photos.photos[0][-1].file_id
                 file = await bot.get_file(file_id)
-                photo_bytes = await bot.download_file(file.file_path)
-                
-                pfp = Image.open(BytesIO(photo_bytes)).resize((140, 140))
-                # Circular mask
+                photo_stream = await bot.download_file(file.file_path)
+
+                pfp = Image.open(photo_stream).convert("RGBA").resize((140, 140))
                 mask = Image.new("L", (140, 140), 0)
                 mask_draw = ImageDraw.Draw(mask)
                 mask_draw.ellipse((0, 0, 140, 140), fill=255)
-                
+
                 card.paste(pfp, (40, 40), mask)
         except Exception:
-            pass # Agar PFP na mile toh default rehne dein
+            pass  # Agar PFP private ho ya na mile toh placeholder circle dikhega
 
-        # 3. Text Overlay on Image
-        draw.text((210, 45), f"PLAYER PROFILE - {user.full_name if hasattr(user, 'full_name') else 'User'}", fill=(255, 255, 255))
+        # 3. Text Overlay on Image (Clean ASCII text for default PIL font)
+        display_name = getattr(user, "full_name", None) or "Player"
+        tickets_count = getattr(user, "tickets", 0)
+
+        draw.text((210, 45), f"PLAYER PROFILE - {display_name}", fill=(255, 255, 255))
         draw.text((210, 95), f"Rank: {title} (Level {user.level})", fill=(0, 255, 127))
-        draw.text((210, 140), f"XP: {user.xp:,}  |  Coins: 🪙 {user.coins:,}", fill=(255, 215, 0))
-        draw.text((210, 185), f"Tickets: 🎟️ {user.tickets if hasattr(user, 'tickets') else 3}", fill=(255, 105, 180))
+        draw.text((210, 140), f"XP: {user.xp:,}  |  Coins: {user.coins:,}", fill=(255, 215, 0))
+        draw.text((210, 185), f"Tickets: {tickets_count}  |  Total Wins: {total_wins}", fill=(255, 105, 180))
 
         output = BytesIO()
         card.save(output, format="PNG")
@@ -101,11 +105,11 @@ async def render_profile(message, user_id: int, bot) -> tuple[BufferedInputFile,
 
         # 4. Text caption niche ke liye
         caption = (
-            f"🪪 **PLAYER PROFILE — {user.full_name if hasattr(user, 'full_name') else 'User'}**\n"
-            f"────────────────────────\n"
+            f"🪪 **PLAYER PROFILE — {display_name}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"🏅 **Rank:** {title} • Level {user.level}\n"
             f"🖼️ **Border:** `{user.equipped_border}`\n"
-            f"✨ **XP:** `{user.xp:,}`  |  🪙 **Coins:** `{user.coins:,}`  |  🎟️ **Tickets:** `{user.tickets if hasattr(user, 'tickets') else 3}`\n"
+            f"✨ **XP:** `{user.xp:,}`  |  🪙 **Coins:** `{user.coins:,}`  |  🎟️ **Tickets:** `{tickets_count}`\n"
             f"📊 **Level Progress:** `{xp_in_lvl}/500 XP`\n"
             f"{bar}\n\n"
             f"📈 **BATTLE STATISTICS**\n"
@@ -116,15 +120,18 @@ async def render_profile(message, user_id: int, bot) -> tuple[BufferedInputFile,
         )
         return photo_file, caption
 
+
 @router.message(Command("profile"))
-async def cmd_profile(message: Message, bot):
-    await ensure_user(message.from_user.id, message.from_user.full_name)
-    photo, caption = await render_profile(message, message.from_user.id, bot)
-    if isinstance(photo, str):
-        await message.answer(photo)
+async def cmd_profile(message: Message, bot: Bot):
+    await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
+    photo, caption = await render_profile(message.from_user.id, bot)
+    if not photo:
+        await message.answer(caption)
     else:
         await message.answer_photo(photo=photo, caption=caption)
-        
+
+
+@router.message(Command("balance"))
 async def cmd_balance(message: Message):
     user = await ensure_user(message.from_user.id, message.from_user.username, message.from_user.full_name)
     await message.answer(
@@ -236,13 +243,12 @@ async def cmd_leaderboards(message: Message):
 async def cb_navigation(callback: CallbackQuery):
     target = callback.data.split(":", 1)[1]
     if target == "profile":
-            await ensure_user(callback.from_user.id, callback.from_user.full_name)
+        await ensure_user(callback.from_user.id, callback.from_user.username, callback.from_user.full_name)
         photo, caption = await render_profile(callback.from_user.id, callback.bot)
-if isinstance(photo, str):
-    await callback.message.answer(photo)
-else:
-    await callback.message.answer_photo(photo=photo, caption=caption)
-    
+        if not photo:
+            await callback.message.answer(caption)
+        else:
+            await callback.message.answer_photo(photo=photo, caption=caption)
     elif target == "daily":
         async with async_session() as session:
             user = await session.get(User, callback.from_user.id)
@@ -299,3 +305,4 @@ async def cmd_maintenance(message: Message):
     else:
         await redis_client.set("maintenance_mode", "1")
         await message.reply("🛠️ Maintenance mode **ON**.")
+        
